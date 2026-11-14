@@ -1,5 +1,6 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { VoicePhase } from "../lib/api";
+import { Icon } from "./Icon";
 
 interface Props {
   disabled: boolean;
@@ -15,6 +16,15 @@ interface Props {
 
 export function Composer({ disabled, busy, listening, voice, heard, onSend, onCancel, onTalk, onStopSpeaking }: Props) {
   const [text, setText] = useState("");
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Autoajuste de altura.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }, [text]);
 
   const submit = () => {
     if (!text.trim() || disabled) return;
@@ -23,7 +33,7 @@ export function Composer({ disabled, busy, listening, voice, heard, onSend, onCa
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
     }
@@ -31,41 +41,40 @@ export function Composer({ disabled, busy, listening, voice, heard, onSend, onCa
   };
 
   return (
-    <footer className="border-t border-[var(--line)] px-3 py-3">
-      {listening && heard && (
-        <div className="mb-2 truncate px-1 text-[11px] text-[var(--muted)]" title={heard}>
-          Oído: «{heard}»
+    <div className="composer">
+      <div className="composer-inner">
+        {listening && heard && <div className="heard" title={heard}>Oído: «{heard}»</div>}
+        <div className="composer-box">
+          <textarea
+            ref={ref}
+            rows={1}
+            autoFocus
+            placeholder={disabled ? "Esperando al modelo local…" : "Escribe a Nova…"}
+            value={text}
+            disabled={disabled}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKey}
+          />
+          {listening && (
+            <button
+              className={`round-btn ${voice === "awake" ? "live" : ""}`}
+              title="Hablar sin decir «Oye Nova»"
+              onClick={onTalk}
+            >
+              <Icon name="mic" />
+            </button>
+          )}
+          {busy ? (
+            <button className="round-btn" title="Parar" onClick={onCancel}>
+              <Icon name="stop" />
+            </button>
+          ) : (
+            <button className="round-btn primary" title="Enviar" disabled={disabled || !text.trim()} onClick={submit}>
+              <Icon name="send" />
+            </button>
+          )}
         </div>
-      )}
-      <div className="flex items-end gap-2">
-        <textarea
-          className="max-h-40 min-h-[42px] flex-1 resize-none rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2.5 text-sm outline-none focus:border-sky-500"
-          rows={1}
-          placeholder={disabled ? "Esperando al modelo local…" : "Escribe a Nova…"}
-          value={text}
-          disabled={disabled}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKey}
-        />
-        {listening && (
-          <button
-            className={`icon-btn h-[42px] w-[42px] ${voice === "awake" ? "!bg-sky-500 text-white" : ""}`}
-            title="Hablar sin decir «Oye Nova»"
-            onClick={onTalk}
-          >
-            🎙
-          </button>
-        )}
-        {busy ? (
-          <button className="btn h-[42px]" onClick={onCancel}>
-            Parar
-          </button>
-        ) : (
-          <button className="btn btn-primary h-[42px]" disabled={disabled || !text.trim()} onClick={submit}>
-            Enviar
-          </button>
-        )}
       </div>
-    </footer>
+    </div>
   );
 }

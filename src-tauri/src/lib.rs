@@ -1,5 +1,6 @@
 //! Nova: asistente de escritorio local-first.
 
+mod control;
 mod download;
 mod intents;
 mod llm;
@@ -134,9 +135,10 @@ fn voice_push_to_talk(state: State<AppState>) -> R<()> {
     state.voice.push_to_talk().map_err(err)
 }
 
+/// `voice` permite probar una voz antes de guardarla en Ajustes.
 #[tauri::command]
-fn speak(state: State<AppState>, text: String) {
-    let voice = state.settings.get().voice_name;
+fn speak(state: State<AppState>, text: String, voice: Option<String>) {
+    let voice = voice.unwrap_or_else(|| state.settings.get().voice_name);
     state.voice.speaker.speak(&text, &voice);
 }
 

@@ -18,6 +18,8 @@ Confidencial** activo, el backend bloquea cualquier conexión con Claude.
 | Voz | Switch de escucha. Micrófono → VAD por energía → whisper.cpp (`ggml-small-q5_1`, offline) → wake word «Oye Nova» → orden. Botón 🎙 para hablar sin decir la wake word. |
 | Habla | Voces del sistema en español (Mónica/Paulina en Mac, Helena/Laura en Windows). Gratis, offline. Se silencia el micrófono mientras habla. |
 | Ajustes | Nombre, personalidad (por defecto con humor) + instrucciones propias, API key en el llavero del sistema, modelo de Claude, voz. |
+| Control de apps | Herramientas `open_app`, `type_text` y `press_keys` para el modelo local («abre Notas y escribe…», «escribe en Claude…»). En Mac pide el permiso de Accesibilidad. Se puede desactivar en Ajustes. |
+| Interfaz | Mismo lenguaje visual que RackMap: barra lateral con conversaciones (buscar, borrar), tema oscuro/claro/sistema. |
 | Persistencia | Conversaciones en SQLite (`tauri-plugin-sql`); ajustes en `settings.json` del directorio de configuración. |
 
 ## Requisitos para compilar
@@ -54,6 +56,7 @@ src/                      Frontend React
   lib/db.ts               SQLite
 src-tauri/src/
   llm/local.rs            Descarga y gestión de llama-server + chat en streaming
+  control.rs              Abrir apps, escribir y pulsar atajos (enigo)
   llm/claude.rs           Cliente de Claude con el bloqueo confidencial
   router.rs               Enrutador local → Claude
   persona.rs              Identidad y personalidad comunes

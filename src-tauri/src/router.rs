@@ -4,17 +4,21 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 use serde::Serialize;
+use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use tokio::task::AbortHandle;
 
 use crate::intents::{self, PrivacyCommand};
 use crate::llm::claude::{ClaudeClient, ConfidentialBlocked, MissingApiKey};
-use crate::llm::local::{ChatMessage, LocalEngine, LocalOutcome};
+use crate::control;
+use crate::llm::local::{escalate_tool, ChatMessage, LocalEngine, LocalOutcome};
 use crate::persona;
 use crate::settings::SettingsStore;
 
 /// Cuántos mensajes del historial se envían al modelo (la memoria compacta llega en fase 2).
 const HISTORY_WINDOW: usize = 20;
+/// Máximo de rondas de herramientas por petición.
+const MAX_TOOL_STEPS: usize = 5;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -35,6 +39,12 @@ struct RouteEvent<'a> {
     id: &'a str,
     engine: Engine,
     note: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+struct ActionEvent<'a> {
+    id: &'a str,
+    text: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -104,6 +114,10 @@ impl Router {
         );
     }
 
+    fn emit_action(&self, id: &str, text: String) {
+        let _ = self.app.emit("chat://action", ActionEvent { id, text });
+    }
+
     fn delta_sink<'a>(&'a self, id: &'a str) -> impl FnMut(&str) + 'a {
         move |t: &str| {
             let _ = self.app.emit("chat://delta", DeltaEvent { id, text: t });
@@ -171,23 +185,71 @@ impl Router {
         let settings = self.settings.get();
         let system = persona::system_prompt(&settings, true, via_voice);
         self.emit_route(id, Engine::Local, None);
-        let result = self
-            .local
-            .chat(&system, history, can_escalate, self.delta_sink(id))
-            .await;
-        match result {
-            Ok(LocalOutcome::Text(t)) => self.emit_done(id, Engine::Local, t, None, via_voice),
-            Ok(LocalOutcome::Escalate { task, reason }) => {
-                let note = if reason.is_empty() {
-                    "Esto es para Claude".to_string()
-                } else {
-                    format!("Escalando a Claude: {reason}")
-                };
-                let _ = task; // El historial completo ya contiene la petición.
-                self.run_claude(id, history, Some(note), via_voice).await;
-            }
-            Err(e) => self.emit_done(id, Engine::Local, String::new(), Some(format!("{e:#}")), via_voice),
+
+        let mut tools = Vec::new();
+        if can_escalate {
+            tools.push(escalate_tool());
         }
+        if settings.app_control {
+            tools.extend(control::tool_definitions());
+        }
+
+        let mut messages = vec![json!({"role": "system", "content": system})];
+        messages.extend(history.iter().map(|m| json!({"role": m.role, "content": m.content})));
+
+        let mut said = String::new();
+        for _ in 0..MAX_TOOL_STEPS {
+            let result = self.local.chat(&messages, &tools, self.delta_sink(id)).await;
+            match result {
+                Ok(LocalOutcome::Text(t)) => {
+                    said.push_str(&t);
+                    self.emit_done(id, Engine::Local, said, None, via_voice);
+                    return;
+                }
+                Ok(LocalOutcome::ToolCalls { content, calls }) => {
+                    if let Some(esc) = calls.iter().find(|c| c.name == "escalate_to_claude") {
+                        let args: Value = serde_json::from_str(&esc.arguments).unwrap_or(Value::Null);
+                        let note = match args["reason"].as_str() {
+                            Some(r) if !r.is_empty() => format!("Escalando a Claude: {r}"),
+                            _ => "Esto es para Claude".to_string(),
+                        };
+                        self.run_claude(id, history, Some(note), via_voice).await;
+                        return;
+                    }
+                    if !content.trim().is_empty() {
+                        said.push_str(&content);
+                        said.push_str("\n\n");
+                    }
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": content,
+                        "tool_calls": calls.iter().map(|c| json!({
+                            "id": c.id,
+                            "type": "function",
+                            "function": {"name": c.name, "arguments": c.arguments},
+                        })).collect::<Vec<_>>(),
+                    }));
+                    for c in &calls {
+                        let args: Value = serde_json::from_str(&c.arguments).unwrap_or(Value::Null);
+                        let output = if control::is_control_tool(&c.name) && settings.app_control {
+                            self.emit_action(id, control::describe(&c.name, &args));
+                            control::execute(&self.app, &c.name, &args).await
+                        } else {
+                            "Error: herramienta no disponible".to_string()
+                        };
+                        messages.push(json!({"role": "tool", "tool_call_id": c.id, "content": output}));
+                    }
+                }
+                Err(e) => {
+                    self.emit_done(id, Engine::Local, String::new(), Some(format!("{e:#}")), via_voice);
+                    return;
+                }
+            }
+        }
+        if said.trim().is_empty() {
+            said = "Hecho.".into();
+        }
+        self.emit_done(id, Engine::Local, said, None, via_voice);
     }
 
     async fn run_claude(&self, id: &str, history: &[ChatMessage], note: Option<String>, via_voice: bool) {

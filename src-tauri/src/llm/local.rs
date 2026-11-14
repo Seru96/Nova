@@ -77,7 +77,15 @@ pub struct ChatMessage {
 /// Resultado de una pasada por el modelo local.
 pub enum LocalOutcome {
     Text(String),
-    Escalate { task: String, reason: String },
+    /// El modelo quiere usar herramientas. `content` es el texto que haya dicho antes.
+    ToolCalls { content: String, calls: Vec<ToolCall> },
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
 }
 
 impl LocalEngine {
@@ -277,22 +285,18 @@ impl LocalEngine {
         *self.port.lock() = None;
     }
 
-    /// Ejecuta una conversación en el modelo local con streaming.
-    /// `on_delta` recibe cada fragmento de texto.
+    /// Ejecuta una pasada del modelo local con streaming.
+    /// `messages` ya incluye el prompt de sistema; `on_delta` recibe cada fragmento.
     pub async fn chat(
         &self,
-        system: &str,
-        history: &[ChatMessage],
-        allow_escalation: bool,
+        messages: &[Value],
+        tools: &[Value],
         mut on_delta: impl FnMut(&str),
     ) -> Result<LocalOutcome> {
         let port = (*self.port.lock()).ok_or_else(|| anyhow!("el modelo local no está listo"))?;
         if self.child_exit_code().is_some() {
             bail!("el modelo local se ha detenido; reinícialo desde Ajustes");
         }
-
-        let mut messages = vec![json!({"role": "system", "content": system})];
-        messages.extend(history.iter().map(|m| json!({"role": m.role, "content": m.content})));
 
         let mut body = json!({
             "messages": messages,
@@ -301,8 +305,8 @@ impl LocalEngine {
             "top_p": 0.8,
             "max_tokens": 1024,
         });
-        if allow_escalation {
-            body["tools"] = json!([escalate_tool()]);
+        if !tools.is_empty() {
+            body["tools"] = json!(tools);
             body["tool_choice"] = json!("auto");
         }
 
@@ -318,8 +322,7 @@ impl LocalEngine {
         }
 
         let mut text = String::new();
-        let mut tool_name = String::new();
-        let mut tool_args = String::new();
+        let mut calls: Vec<ToolCall> = Vec::new();
         let mut buf = String::new();
         let mut stream = resp.bytes_stream();
         'outer: while let Some(chunk) = stream.next().await {
@@ -344,31 +347,41 @@ impl LocalEngine {
                         on_delta(t);
                     }
                 }
-                if let Some(calls) = delta["tool_calls"].as_array() {
-                    for c in calls {
+                if let Some(deltas) = delta["tool_calls"].as_array() {
+                    for c in deltas {
+                        let idx = c["index"].as_u64().unwrap_or(calls.len().saturating_sub(1) as u64) as usize;
+                        while calls.len() <= idx {
+                            calls.push(ToolCall::default());
+                        }
+                        let call = &mut calls[idx];
+                        if let Some(id) = c["id"].as_str() {
+                            call.id = id.to_string();
+                        }
                         if let Some(n) = c["function"]["name"].as_str() {
-                            tool_name.push_str(n);
+                            call.name.push_str(n);
                         }
                         if let Some(a) = c["function"]["arguments"].as_str() {
-                            tool_args.push_str(a);
+                            call.arguments.push_str(a);
                         }
                     }
                 }
             }
         }
 
-        if tool_name == "escalate_to_claude" {
-            let args: Value = serde_json::from_str(&tool_args).unwrap_or(Value::Null);
-            return Ok(LocalOutcome::Escalate {
-                task: args["task"].as_str().unwrap_or_default().to_string(),
-                reason: args["reason"].as_str().unwrap_or_default().to_string(),
-            });
+        calls.retain(|c| !c.name.is_empty());
+        if calls.is_empty() {
+            return Ok(LocalOutcome::Text(text));
         }
-        Ok(LocalOutcome::Text(text))
+        for (i, c) in calls.iter_mut().enumerate() {
+            if c.id.is_empty() {
+                c.id = format!("call_{i}");
+            }
+        }
+        Ok(LocalOutcome::ToolCalls { content: text, calls })
     }
 }
 
-fn escalate_tool() -> Value {
+pub fn escalate_tool() -> Value {
     json!({
         "type": "function",
         "function": {

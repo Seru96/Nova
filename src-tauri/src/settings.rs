@@ -44,6 +44,10 @@ pub struct Settings {
     pub speak_replies: bool,
     /// Nombre de la voz del sistema elegida (vacío = automática en español).
     pub voice_name: String,
+    /// Permitir que Nova abra apps, escriba en ellas y pulse atajos.
+    pub app_control: bool,
+    /// Tema de la interfaz: "dark", "light" o "system".
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -58,6 +62,8 @@ impl Default for Settings {
             listening: false,
             speak_replies: true,
             voice_name: String::new(),
+            app_control: true,
+            theme: "dark".into(),
         }
     }
 }

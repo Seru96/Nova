@@ -55,6 +55,13 @@ pub fn system_prompt(s: &Settings, local: bool, via_voice: bool) -> String {
     if via_voice {
         p.push_str("\nEsta petición llega por voz: responde en una o dos frases naturales.");
     }
+    if local && s.app_control {
+        p.push_str(
+            "\n\nPuedes controlar el ordenador con las herramientas `open_app`, `type_text` y `press_keys`. \
+             Úsalas cuando te pidan abrir una app, escribir o enviar algo en otra app (incluida la app de Claude) o pulsar un atajo. \
+             Escribe exactamente el texto que pida el usuario. Después confirma en una frase lo que has hecho.",
+        );
+    }
     if local {
         if s.confidential {
             p.push_str(

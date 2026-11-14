@@ -32,6 +32,41 @@ export async function newConversation(): Promise<string> {
   return id;
 }
 
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: number;
+  updated_at: number;
+}
+
+/** Conversaciones con mensajes, de la más reciente a la más antigua. */
+export async function listConversations(): Promise<Conversation[]> {
+  const d = await db();
+  return d.select<Conversation[]>(
+    `SELECT c.id, c.title, c.created_at, COALESCE(MAX(m.created_at), c.created_at) AS updated_at
+     FROM conversations c JOIN messages m ON m.conversation_id = c.id
+     GROUP BY c.id ORDER BY updated_at DESC`,
+  );
+}
+
+export async function renameConversation(id: string, title: string): Promise<void> {
+  const d = await db();
+  await d.execute("UPDATE conversations SET title = $1 WHERE id = $2", [title, id]);
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const d = await db();
+  await d.execute("DELETE FROM messages WHERE conversation_id = $1", [id]);
+  await d.execute("DELETE FROM conversations WHERE id = $1", [id]);
+}
+
+/** Título a partir del primer mensaje: primeras palabras, sin «Oye Nova». */
+export function titleFrom(text: string): string {
+  const clean = text.replace(/^\s*(oye,?\s+)?nova[,.:!]?\s*/i, "").trim() || text.trim();
+  const short = clean.length > 48 ? `${clean.slice(0, 46).trimEnd()}…` : clean;
+  return short.charAt(0).toUpperCase() + short.slice(1);
+}
+
 export async function loadMessages(conversationId: string): Promise<StoredMessage[]> {
   const d = await db();
   return d.select<StoredMessage[]>(

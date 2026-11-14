@@ -14,7 +14,11 @@ export interface Settings {
   listening: boolean;
   speak_replies: boolean;
   voice_name: string;
+  app_control: boolean;
+  theme: Theme;
 }
+
+export type Theme = "dark" | "light" | "system";
 
 export type EnginePhase = "idle" | "downloading" | "starting" | "ready" | "error";
 export interface EngineStatus {
@@ -50,7 +54,7 @@ export const api = {
     invoke<void>("chat_send", { id, history, text, viaVoice }),
   chatCancel: () => invoke<void>("chat_cancel"),
   pushToTalk: () => invoke<void>("voice_push_to_talk"),
-  speak: (text: string) => invoke<void>("speak", { text }),
+  speak: (text: string, voice?: string) => invoke<void>("speak", { text, voice: voice ?? null }),
   stopSpeaking: () => invoke<void>("stop_speaking"),
   listVoices: () => invoke<VoiceInfo[]>("list_voices"),
 };
@@ -60,6 +64,7 @@ export interface Events {
   "settings://changed": Settings;
   "chat://route": { id: string; engine: Engine; note: string | null };
   "chat://delta": { id: string; text: string };
+  "chat://action": { id: string; text: string };
   "chat://done": { id: string; engine: Engine; text: string; error: string | null; via_voice: boolean };
   "voice://state": { phase: VoicePhase; error: string | null };
   "voice://transcript": string;
