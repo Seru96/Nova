@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import type { EngineStatus, VoicePhase } from "../lib/api";
 import type { Conversation } from "../lib/db";
 import { Icon } from "./Icon";
@@ -27,6 +28,10 @@ function when(ts: number): string {
 
 export function Sidebar({ conversations, currentId, engine, voice, onNew, onOpen, onDelete, onSettings }: Props) {
   const [q, setQ] = useState("");
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => {});
+  }, []);
   const list = useMemo(() => {
     const n = q.trim().toLowerCase();
     return n ? conversations.filter((c) => c.title.toLowerCase().includes(n)) : conversations;
@@ -87,6 +92,7 @@ export function Sidebar({ conversations, currentId, engine, voice, onNew, onOpen
         <div className="engine-line">
           <span className={`dot ${dot}`} /> {engineText}
         </div>
+        {version && <div className="version">Nova {version}</div>}
       </div>
     </aside>
   );

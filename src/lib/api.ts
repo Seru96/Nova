@@ -20,7 +20,7 @@ export interface Settings {
   halo_preview: boolean;
 }
 
-export type Theme = "dark" | "light" | "system";
+export type Theme = "dark" | "hybrid" | "light";
 
 export type EnginePhase = "idle" | "downloading" | "starting" | "ready" | "error";
 export interface EngineStatus {

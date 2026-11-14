@@ -19,7 +19,7 @@ Confidencial** activo, el backend bloquea cualquier conexión con Claude.
 | Habla | Voces del sistema en español (Mónica/Paulina en Mac, Helena/Laura en Windows). Gratis, offline. Se silencia el micrófono mientras habla. |
 | Ajustes | Nombre, personalidad (por defecto con humor) + instrucciones propias, API key en el llavero del sistema, modelo de Claude, voz. |
 | Control de apps | Herramientas `open_app`, `type_text` y `press_keys` para el modelo local («abre Notas y escribe…», «escribe en Claude…»). En Mac pide el permiso de Accesibilidad. Se puede desactivar en Ajustes. |
-| Interfaz | Mismo lenguaje visual que RackMap: barra lateral con conversaciones (buscar, borrar), tema oscuro/claro/sistema. |
+| Interfaz | Mismo lenguaje visual que RackMap: barra lateral con conversaciones (buscar, borrar), tema Oscuro, Híbrido (paneles oscuros y conversación en blanco) o Claro, como RackMap. |
 | H.A.L.O. | Control de **todo el ordenador** con gestos de la mano por la cámara (switch «Gestos»). MediaPipe Hand Landmarker (21 puntos por mano) en un Web Worker dentro de un HUD transparente que deja pasar los clics. Índice = cursor, pellizco = clic/arrastrar, pulgar+corazón = clic derecho, dos manos = maximizar/restaurar/media pantalla, deslizar la palma = cambiar de escritorio, puño 1 s = cerrar la ventana activa, palma quieta = alto (pausa escucha y gestos). Ventanas con Accessibility en Mac y Win32 en Windows (`window_manager.rs`). |
 | Persistencia | Conversaciones en SQLite (`tauri-plugin-sql`); ajustes en `settings.json` del directorio de configuración. |
 

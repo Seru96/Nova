@@ -160,6 +160,18 @@ export default function App() {
     };
   }, [addMessage, flash, refreshList]);
 
+  // ⌘, en el Mac y Ctrl+, en Windows abren Ajustes, como en RackMap.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setShowSettings(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const openConversation = async (id: string) => {
     if (id === currentId) return;
     setCurrentId(id);
@@ -231,6 +243,13 @@ export default function App() {
             <button role="switch" aria-checked={settings?.confidential} disabled={!settings} onClick={toggleConfidential} />
             <span>Confidencial</span>
           </label>
+          <button
+            className="tool-btn icon-only"
+            title={navigator.userAgent.includes("Mac") ? "Ajustes (⌘,)" : "Ajustes (Ctrl+,)"}
+            onClick={() => setShowSettings(true)}
+          >
+            <Icon name="gear" size={15} />
+          </button>
         </div>
 
         {settings?.confidential && (

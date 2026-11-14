@@ -5,6 +5,11 @@
  * sistema, 13 px, paneles sólidos con bordes finos e iconos de línea.
  * Tema en Ajustes: oscuro (por defecto), claro o el del sistema.
  */
+/*
+ * Temas (Ajustes › Apariencia), igual que RackMap. Oscuro: todo oscuro (por defecto).
+ * Híbrido: barra lateral y cabecera oscuras, y la conversación en blanco. Claro: todo en
+ * claro. `data-ui` decide los paneles y `data-canvas` la zona de la conversación.
+ */
 :root {
   color-scheme: dark;
   --bg: #1c1c1e;
@@ -21,22 +26,34 @@
   --control: rgba(255, 255, 255, 0.08);
   --control-hover: rgba(255, 255, 255, 0.14);
   --field-bg: #1c1c1e;
+  --option-bg: #1c1c1e;
+  --option-text: #ffffff;
   --placeholder: rgba(255, 255, 255, 0.25);
   --float: rgba(40, 40, 42, 0.97);
   --shadow: rgba(0, 0, 0, 0.45);
+  --hair: rgba(255, 255, 255, 0.06);
+  --hair-strong: rgba(255, 255, 255, 0.16);
+  --soft: rgba(255, 255, 255, 0.04);
+  --seg-on: rgba(255, 255, 255, 0.18);
+  --seg-shadow: none;
+  --raised: #2c2c2e;
+  --raised-hover: #3a3a3c;
+  --row-on: rgba(10, 132, 255, 0.24);
+  --warn-text: #ffd60a;
   --card: rgba(255, 255, 255, 0.045);
   --bubble-user: #0a84ff;
-  --row-on: rgba(10, 132, 255, 0.24);
   --thumb: rgba(255, 255, 255, 0.28);
+  --thumb-hover: rgba(255, 255, 255, 0.5);
+  --canvas-bg: #1c1c1e;
   font: 13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-
-html[data-theme="light"] {
+/* En híbrido la conversación y el compositor van en blanco, como los lienzos de RackMap. */
+html[data-ui="light"], html[data-canvas="light"] :is(.chat, .composer) {
   color-scheme: light;
   --bg: #f5f5f7;
   --panel: rgba(246, 246, 248, 0.92);
-  --panel-solid: #ececef;
+  --panel-solid: #f5f5f7;
   --border: rgba(0, 0, 0, 0.12);
   --text: #1c1c1e;
   --muted: #6e6e73;
@@ -48,21 +65,42 @@ html[data-theme="light"] {
   --control: rgba(0, 0, 0, 0.055);
   --control-hover: rgba(0, 0, 0, 0.1);
   --field-bg: #ffffff;
+  --option-bg: #ffffff;
+  --option-text: #000000;
   --placeholder: rgba(0, 0, 0, 0.3);
   --float: rgba(255, 255, 255, 0.97);
   --shadow: rgba(0, 0, 0, 0.18);
-  --card: #ffffff;
-  --bubble-user: #007aff;
+  --hair: rgba(0, 0, 0, 0.08);
+  --hair-strong: rgba(0, 0, 0, 0.18);
+  --soft: rgba(0, 0, 0, 0.03);
+  --seg-on: #ffffff;
+  --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --raised: #ebebef;
+  --raised-hover: #dedee3;
   --row-on: rgba(0, 122, 255, 0.14);
+  --warn-text: #a05a00;
+  --card: #f2f2f5;
+  --bubble-user: #007aff;
   --thumb: rgba(0, 0, 0, 0.25);
+  --thumb-hover: rgba(0, 0, 0, 0.45);
 }
+html[data-canvas="light"] { --canvas-bg: #ffffff; }
+html[data-canvas="light"] :is(.chat, .composer) { color: var(--text); }
+
+/*
+ * Desplegables: el texto siempre sobre un fondo que lo deja leer (Windows pinta la lista
+ * abierta con el tema del sistema si no se le dan colores propios).
+ */
+select { font: inherit; color: var(--text); background-color: var(--field-bg); border: 1px solid var(--border); border-radius: 6px; min-height: 22px; }
+select option, select optgroup { background-color: var(--option-bg); color: var(--option-text); }
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
 body { -webkit-user-select: none; user-select: none; }
-button, input, textarea, select { font: inherit; color: inherit; }
+button, input, textarea { font: inherit; color: inherit; }
 input::placeholder, textarea::placeholder { color: var(--placeholder); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--thumb-hover); }
 ::-webkit-scrollbar-thumb { background: var(--thumb); border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
 .icon-line { display: block; flex: none; }
 .muted { color: var(--muted); }
@@ -148,7 +186,7 @@ html[data-os="win"] .side-drag { height: 12px; }
 .confidential-bar { padding: 6px 16px; font-size: 12px; color: var(--warn); background: rgba(255, 159, 10, 0.1); border-bottom: 1px solid var(--border); }
 
 /* Chat */
-.chat { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 24px 12px; }
+.chat { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 24px 12px; background: var(--canvas-bg); }
 .chat-inner { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 .msg { display: flex; flex-direction: column; gap: 4px; -webkit-user-select: text; user-select: text; }
 .msg.user { align-items: flex-end; }
@@ -174,7 +212,7 @@ html[data-os="win"] .side-drag { height: 12px; }
 .chip:hover { background: var(--control-hover); }
 
 /* Compositor */
-.composer { flex: none; padding: 8px 24px 16px; }
+.composer { flex: none; padding: 8px 24px 16px; background: var(--canvas-bg); }
 .composer-inner { max-width: 760px; margin: 0 auto; }
 .composer .heard { margin: 0 4px 6px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .composer-box { display: flex; align-items: flex-end; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--field-bg); }
@@ -188,6 +226,37 @@ html[data-os="win"] .side-drag { height: 12px; }
 .round-btn:disabled { opacity: 0.35; }
 
 /* Botones y diálogos (RackMap) */
+.tool-btn { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--control); color: var(--text); cursor: default; }
+.tool-btn:hover:not(:disabled) { background: var(--control-hover); }
+.tool-btn.icon-only { width: 30px; padding: 0; justify-content: center; font-size: 15px; }
+.version { font-size: 11px; color: var(--muted); padding: 2px 12px 0; font-variant-numeric: tabular-nums; }
+
+/* Ajustes › Apariencia: tarjetas con miniatura de la ventana */
+.theme-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.theme-choice {
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 8px 10px; text-align: left;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--control); cursor: default;
+}
+.theme-choice:hover { border-color: var(--hair-strong); background: var(--control-hover); }
+.theme-choice.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.theme-choice strong { font-size: 13px; margin-top: 4px; }
+.theme-choice small { font-size: 11px; color: var(--muted); line-height: 1.3; }
+.theme-preview {
+  position: relative; display: block; height: 78px; border-radius: 6px; overflow: hidden;
+  --tp-panel: #2c2c2e; --tp-bar: #3a3a3c; --tp-canvas: #1c1c1e; --tp-line: rgba(255, 255, 255, 0.35); --tp-bubble: rgba(255, 255, 255, 0.14); --tp-edge: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--tp-edge);
+}
+.theme-preview.hybrid { --tp-canvas: #ffffff; --tp-line: rgba(0, 0, 0, 0.55); --tp-bubble: rgba(0, 0, 0, 0.08); }
+.theme-preview.light { --tp-panel: #ececf0; --tp-bar: #dcdce1; --tp-canvas: #ffffff; --tp-line: rgba(0, 0, 0, 0.55); --tp-bubble: rgba(0, 0, 0, 0.08); --tp-edge: rgba(0, 0, 0, 0.14); }
+.theme-preview > span { position: absolute; }
+.tp-side { left: 0; top: 0; bottom: 0; width: 26%; background: var(--tp-panel); }
+.tp-side i { position: absolute; left: 14%; right: 14%; height: 4px; border-radius: 2px; background: var(--tp-bubble); }
+.tp-bar { left: 26%; right: 0; top: 0; height: 12px; background: var(--tp-bar); }
+.tp-canvas { left: 26%; right: 0; top: 12px; bottom: 0; background: var(--tp-canvas); }
+.tp-msg { position: absolute; height: 9px; border-radius: 5px; background: var(--tp-bubble); }
+.tp-msg.me { background: #0a84ff; }
+.tp-box { position: absolute; left: 12%; right: 12%; bottom: 8%; height: 11px; border-radius: 4px; border: 1px solid var(--tp-line); opacity: 0.5; }
+
 .btn { padding: 4px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--control); cursor: default; }
 .btn:hover:not(:disabled) { background: var(--control-hover); }
 .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
@@ -207,6 +276,7 @@ html[data-os="win"] .side-drag { height: 12px; }
 .dialog .hint { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
 .dialog .ok-text { color: var(--ok); }
 .dialog input, .dialog textarea, .dialog select {
+  min-height: 28px;
   width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--field-bg); color: var(--text); outline: none;
   -webkit-user-select: text; user-select: text;
 }
@@ -214,12 +284,12 @@ html[data-os="win"] .side-drag { height: 12px; }
 .dialog .inline { display: flex; gap: 8px; align-items: center; }
 .dialog .inline > :first-child { flex: 1; }
 .segmented { display: flex; padding: 2px; border-radius: 7px; background: var(--control); }
-.segmented button { flex: 1; border: 0; background: transparent; padding: 4px 8px; border-radius: 5px; cursor: default; }
-.segmented button.on { background: var(--accent); color: #fff; }
+.segmented button { flex: 1; border: 0; background: transparent; padding: 3px 6px; border-radius: 5px; font-size: 12px; cursor: default; }
+.segmented button.on { background: var(--seg-on); box-shadow: var(--seg-shadow); color: var(--text); }
 .choice-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.choice { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); text-align: left; cursor: default; }
-.choice:hover { border-color: var(--hair-strong, var(--muted)); }
-.choice.on { border-color: var(--accent); background: var(--row-on); }
+.choice { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--control); text-align: left; cursor: default; }
+.choice:hover { border-color: var(--hair-strong); background: var(--control-hover); }
+.choice.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .choice small { color: var(--muted); font-size: 11px; }
 
 .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 950; max-width: 80vw; padding: 7px 14px; border-radius: 16px; background: var(--float); border: 1px solid var(--border); box-shadow: 0 8px 24px var(--shadow); animation: toast-in 0.18s ease-out; }

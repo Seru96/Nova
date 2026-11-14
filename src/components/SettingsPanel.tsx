@@ -17,10 +17,10 @@ const personalities: { id: Personality; label: string; hint: string }[] = [
   { id: "personalizada", label: "Personalizada", hint: "Solo tus instrucciones" },
 ];
 
-const themes: { id: Theme; label: string }[] = [
-  { id: "dark", label: "Oscuro" },
-  { id: "light", label: "Claro" },
-  { id: "system", label: "Sistema" },
+const themes: { id: Theme; label: string; hint: string }[] = [
+  { id: "light", label: "Claro", hint: "Toda la app en claro, también la conversación." },
+  { id: "hybrid", label: "Híbrido", hint: "Barra lateral y cabecera oscuras, y la conversación en blanco." },
+  { id: "dark", label: "Oscuro", hint: "Toda la app oscura. Es el modo por defecto." },
 ];
 
 const claudeModels = [
@@ -54,6 +54,14 @@ export function SettingsPanel({ settings, onClose, onSaved, onError }: Props) {
     applyTheme(s.theme);
     return () => applyTheme(settings.theme);
   }, [s.theme, settings.theme]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((prev) => ({ ...prev, [k]: v }));
 
@@ -93,10 +101,18 @@ export function SettingsPanel({ settings, onClose, onSaved, onError }: Props) {
         <div className="dialog-body">
           <section>
             <h4>Apariencia</h4>
-            <div className="segmented">
+            <div className="theme-choices" role="radiogroup" aria-label="Apariencia">
               {themes.map((t) => (
-                <button key={t.id} className={s.theme === t.id ? "on" : ""} onClick={() => set("theme", t.id)}>
-                  {t.label}
+                <button
+                  key={t.id}
+                  role="radio"
+                  aria-checked={normalizeTheme(s.theme) === t.id}
+                  className={`theme-choice ${normalizeTheme(s.theme) === t.id ? "on" : ""}`}
+                  onClick={() => set("theme", t.id)}
+                >
+                  <ThemePreview theme={t.id} />
+                  <strong>{t.label}</strong>
+                  <small>{t.hint}</small>
                 </button>
               ))}
             </div>
@@ -223,8 +239,40 @@ export function SettingsPanel({ settings, onClose, onSaved, onError }: Props) {
   );
 }
 
-/** Aplica el tema a <html>. "system" sigue al sistema operativo. */
+/** Miniatura de la ventana: barra lateral, cabecera y la conversación. */
+function ThemePreview({ theme }: { theme: Theme }) {
+  return (
+    <span className={`theme-preview ${theme}`} aria-hidden>
+      <span className="tp-side">
+        <i style={{ top: "22%" }} />
+        <i style={{ top: "38%" }} />
+        <i style={{ top: "54%", right: "30%" }} />
+      </span>
+      <span className="tp-bar" />
+      <span className="tp-canvas">
+        <span className="tp-msg me" style={{ right: "10%", top: "12%", width: "34%" }} />
+        <span className="tp-msg" style={{ left: "10%", top: "34%", width: "52%" }} />
+        <span className="tp-box" />
+      </span>
+    </span>
+  );
+}
+
+export function normalizeTheme(theme: string): Theme {
+  return theme === "light" || theme === "hybrid" ? theme : "dark";
+}
+
+/**
+ * Aplica el tema como RackMap: `data-ui` para los paneles, `data-canvas` para la
+ * conversación, y el color de la barra de título de la ventana.
+ */
 export function applyTheme(theme: Theme) {
-  const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const t = normalizeTheme(theme);
+  const root = document.documentElement;
+  root.dataset.ui = t === "light" ? "light" : "dark";
+  root.dataset.canvas = t === "dark" ? "dark" : "light";
+  root.dataset.theme = t;
+  void import("@tauri-apps/api/window")
+    .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(t === "light" ? "light" : "dark"))
+    .catch(() => {});
 }
