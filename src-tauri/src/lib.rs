@@ -2,6 +2,7 @@
 
 mod control;
 mod download;
+mod halo;
 mod intents;
 mod llm;
 mod persona;
@@ -9,6 +10,7 @@ mod router;
 mod secrets;
 mod settings;
 mod voice;
+mod window_manager;
 
 use std::sync::Arc;
 
@@ -26,6 +28,7 @@ struct AppState {
     engine: Arc<LocalEngine>,
     router: Arc<Router>,
     voice: Arc<VoiceService>,
+    pointer: halo::Pointer,
 }
 
 type R<T> = Result<T, String>;
@@ -42,15 +45,17 @@ fn get_settings(state: State<AppState>) -> Settings {
 }
 
 /// Guarda los ajustes editables desde la pantalla de Ajustes.
-/// `confidential` y `listening` tienen comandos propios y aquí se ignoran.
+/// `confidential`, `listening` y `halo` tienen comandos propios y aquí se ignoran.
 #[tauri::command]
 fn save_settings(app: tauri::AppHandle, state: State<AppState>, settings: Settings) -> Settings {
     let s = state.settings.update(|cur| {
         let confidential = cur.confidential;
         let listening = cur.listening;
+        let halo = cur.halo;
         *cur = settings;
         cur.confidential = confidential;
         cur.listening = listening;
+        cur.halo = halo;
     });
     let _ = app.emit("settings://changed", &s);
     s
@@ -73,6 +78,61 @@ fn set_listening(app: tauri::AppHandle, state: State<AppState>, on: bool) -> R<S
     let s = state.settings.update(|s| s.listening = on);
     let _ = app.emit("settings://changed", &s);
     Ok(s)
+}
+
+// ---------- H.A.L.O. (gestos) ----------
+
+#[tauri::command]
+fn halo_set(app: tauri::AppHandle, state: State<AppState>, on: bool) -> R<Settings> {
+    if on {
+        halo::show_overlay(&app).map_err(|e| format!("{e:#}"))?;
+    } else {
+        halo::hide_overlay(&app);
+    }
+    let s = state.settings.update(|s| s.halo = on);
+    let _ = app.emit("settings://changed", &s);
+    Ok(s)
+}
+
+/// El HUD avisa de que la cámara ya funciona: a partir de aquí deja pasar los clics.
+#[tauri::command]
+fn halo_ready(app: tauri::AppHandle, ready: bool) {
+    halo::set_click_through(&app, ready);
+}
+
+#[tauri::command]
+fn halo_pointer(state: State<AppState>, x: f64, y: f64) {
+    state.pointer.move_to(x, y);
+}
+
+#[tauri::command]
+fn halo_button(state: State<AppState>, action: halo::ButtonAction) {
+    state.pointer.button(action);
+}
+
+#[tauri::command]
+async fn halo_window(action: window_manager::WindowAction) -> R<()> {
+    tauri::async_runtime::spawn_blocking(move || halo::window_action(action))
+        .await
+        .map_err(err)?
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+async fn halo_desktop(dir: window_manager::DesktopDir) -> R<()> {
+    tauri::async_runtime::spawn_blocking(move || halo::switch_desktop(dir))
+        .await
+        .map_err(err)?
+        .map_err(|e| format!("{e:#}"))
+}
+
+/// Gesto de «alto» (palma abierta quieta): deja de escuchar el micrófono.
+#[tauri::command]
+fn halo_stop_listening(app: tauri::AppHandle, state: State<AppState>) {
+    state.voice.stop();
+    state.voice.speaker.stop();
+    let s = state.settings.update(|s| s.listening = false);
+    let _ = app.emit("settings://changed", &s);
 }
 
 // ---------- API key (llavero del sistema) ----------
@@ -212,11 +272,18 @@ pub fn run() {
                 });
             }
 
+            if settings.get().halo {
+                if let Err(e) = halo::show_overlay(&handle) {
+                    log::warn!("no se pudo reactivar H.A.L.O.: {e:#}");
+                }
+            }
+
             app.manage(AppState {
                 settings,
                 engine,
                 router,
                 voice,
+                pointer: halo::Pointer::new(),
             });
             Ok(())
         })
@@ -236,6 +303,13 @@ pub fn run() {
             speak,
             stop_speaking,
             list_voices,
+            halo_set,
+            halo_ready,
+            halo_pointer,
+            halo_button,
+            halo_window,
+            halo_desktop,
+            halo_stop_listening,
         ])
         .build(tauri::generate_context!())
         .expect("error al iniciar Nova")

@@ -1,15 +1,17 @@
 {
   "name": "nova",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node scripts/copy-halo-wasm.mjs && vite",
+    "build": "node scripts/copy-halo-wasm.mjs && tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.2.3",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-sql": "^2.6.0",
     "react": "^19.3.1",
@@ -24,6 +26,7 @@
     "@vitejs/plugin-react": "^6.3.0",
     "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2",
-    "vite": "^8.3.8"
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
   }
 }

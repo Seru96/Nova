@@ -16,6 +16,8 @@ export interface Settings {
   voice_name: string;
   app_control: boolean;
   theme: Theme;
+  halo: boolean;
+  halo_preview: boolean;
 }
 
 export type Theme = "dark" | "light" | "system";
@@ -57,6 +59,14 @@ export const api = {
   speak: (text: string, voice?: string) => invoke<void>("speak", { text, voice: voice ?? null }),
   stopSpeaking: () => invoke<void>("stop_speaking"),
   listVoices: () => invoke<VoiceInfo[]>("list_voices"),
+  haloSet: (on: boolean) => invoke<Settings>("halo_set", { on }),
+  haloReady: (ready: boolean) => invoke<void>("halo_ready", { ready }),
+  haloPointer: (x: number, y: number) => invoke<void>("halo_pointer", { x, y }),
+  haloButton: (action: "down" | "up" | "click" | "right_click") => invoke<void>("halo_button", { action }),
+  haloWindow: (action: "maximize" | "restore" | "minimize" | "snap_left" | "snap_right") =>
+    invoke<void>("halo_window", { action }),
+  haloDesktop: (dir: "left" | "right") => invoke<void>("halo_desktop", { dir }),
+  haloStopListening: () => invoke<void>("halo_stop_listening"),
 };
 
 export interface Events {

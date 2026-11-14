@@ -139,6 +139,25 @@ export function SettingsPanel({ settings, onClose, onSaved, onError }: Props) {
           </section>
 
           <section>
+            <h4>H.A.L.O. · gestos con la cámara</h4>
+            <Switch
+              label="Mostrar la miniatura de la cámara con tu mano"
+              checked={s.halo_preview}
+              onChange={(v) => set("halo_preview", v)}
+            />
+            <ul className="hint halo-help">
+              <li><b>Índice estirado</b>: mueve el cursor.</li>
+              <li><b>Pellizco</b> (pulgar + índice): clic. Mantén y mueve para arrastrar ventanas o archivos.</li>
+              <li><b>Pulgar + corazón</b>: clic derecho.</li>
+              <li><b>Dos manos pellizcando</b>: sepáralas para maximizar, júntalas para restaurar, desplázalas a un lado para ocupar media pantalla.</li>
+              <li><b>Palma abierta, deslizando rápido</b>: cambia de escritorio.</li>
+              <li><b>Puño 1 segundo</b>: minimiza la ventana activa.</li>
+              <li><b>Palma quieta</b>: alto. Deja de escuchar y pausa los gestos (repite para seguir).</li>
+            </ul>
+            <p className="hint">Funciona en todo el ordenador, no solo en Nova. Se activa con el switch «Gestos» de la cabecera. La cámara se procesa en local y no se guarda nada.</p>
+          </section>
+
+          <section>
             <h4>Claude</h4>
             {hasKey ? (
               <div className="inline">

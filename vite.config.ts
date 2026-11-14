@@ -8,6 +8,8 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   clearScreen: false,
+  // H.A.L.O. detecta las manos en un worker de módulo (también en producción).
+  worker: { format: "es" },
   server: {
     port: 1420,
     strictPort: true,

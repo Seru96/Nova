@@ -185,6 +185,14 @@ export default function App() {
       flash(String(e));
     }
   };
+  const toggleHalo = async () => {
+    if (!settings) return;
+    try {
+      setSettings(await api.haloSet(!settings.halo));
+    } catch (e) {
+      flash(String(e));
+    }
+  };
   const toggleConfidential = async () => settings && setSettings(await api.setConfidential(!settings.confidential));
 
   const title = conversations.find((c) => c.id === currentId)?.title ?? "Nueva conversación";
@@ -214,6 +222,10 @@ export default function App() {
           <label className={`switch ${listening ? "on" : ""}`}>
             <button role="switch" aria-checked={listening} disabled={!settings} onClick={toggleListening} />
             <span>Escucha</span>
+          </label>
+          <label className={`switch ${settings?.halo ? "on" : ""}`} title="H.A.L.O.: controla el ordenador con gestos de la mano">
+            <button role="switch" aria-checked={settings?.halo} disabled={!settings} onClick={toggleHalo} />
+            <span>Gestos</span>
           </label>
           <label className={`switch amber ${settings?.confidential ? "on" : ""}`}>
             <button role="switch" aria-checked={settings?.confidential} disabled={!settings} onClick={toggleConfidential} />

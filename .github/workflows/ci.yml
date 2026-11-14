@@ -28,6 +28,8 @@ jobs:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Tests de gestos (H.A.L.O.)
+        run: pnpm test
       - name: Tests de Rust
         working-directory: src-tauri
         run: cargo test

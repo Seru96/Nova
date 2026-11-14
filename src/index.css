@@ -230,3 +230,37 @@ html[data-os="win"] .side-drag { height: 12px; }
   .side { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- H.A.L.O. (HUD transparente) ---------- */
+html.halo-overlay, html.halo-overlay body, html.halo-overlay #root { background: transparent !important; }
+.halo { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.halo-video { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.halo-cursor {
+  position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+  border: 2px solid rgba(10, 132, 255, 0.9); box-shadow: 0 0 18px rgba(10, 132, 255, 0.45);
+  transition: width .12s, height .12s, margin .12s, background .12s;
+}
+.halo-cursor.pinch { width: 20px; height: 20px; margin: -10px 0 0 -10px; background: rgba(10, 132, 255, 0.35); }
+.halo-cursor.drag { background: rgba(10, 132, 255, 0.7); border-color: #fff; }
+.halo-dock { position: absolute; right: 22px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.halo-preview { border-radius: 14px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.18); }
+.halo-preview canvas { display: block; width: 192px; height: 144px; }
+.halo-pill {
+  display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px;
+  background: rgba(28, 28, 30, 0.72); color: #fff; font-size: 12.5px; font-weight: 500;
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.14); opacity: .65; transition: opacity .2s;
+}
+.halo-pill.show { opacity: 1; }
+.halo-pill.paused { background: rgba(255, 159, 10, 0.85); color: #1c1c1e; }
+.halo-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.4); }
+.halo-dot.live { background: #30d158; box-shadow: 0 0 8px #30d158; }
+.halo-progress { width: 54px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.2); overflow: hidden; }
+.halo-progress span { display: block; height: 100%; background: #0a84ff; }
+.halo-card {
+  position: absolute; right: 22px; bottom: 22px; width: 300px; padding: 16px; border-radius: 14px; pointer-events: auto;
+  background: var(--panel-solid); color: var(--text); border: 1px solid var(--border);
+  box-shadow: 0 16px 40px rgba(0,0,0,.4);
+}
+.halo-card p { margin: 6px 0 12px; color: var(--muted); line-height: 1.4; }
+.halo-help { margin: 4px 0 0; padding-left: 18px; line-height: 1.55; }

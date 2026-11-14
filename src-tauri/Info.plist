@@ -4,5 +4,7 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Nova usa el micrófono para escucharte cuando activas la escucha ("Oye Nova"). El audio se procesa solo en tu ordenador.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>H.A.L.O. usa la cámara para reconocer los gestos de tus manos. Las imágenes se procesan solo en tu ordenador y nunca se guardan.</string>
 </dict>
 </plist>

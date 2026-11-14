@@ -48,6 +48,10 @@ pub struct Settings {
     pub app_control: bool,
     /// Tema de la interfaz: "dark", "light" o "system".
     pub theme: String,
+    /// H.A.L.O.: control por gestos con la cámara.
+    pub halo: bool,
+    /// Mostrar la miniatura de la cámara con el esqueleto de la mano en el HUD.
+    pub halo_preview: bool,
 }
 
 impl Default for Settings {
@@ -64,6 +68,8 @@ impl Default for Settings {
             voice_name: String::new(),
             app_control: true,
             theme: "dark".into(),
+            halo: false,
+            halo_preview: true,
         }
     }
 }

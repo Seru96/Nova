@@ -20,6 +20,7 @@ Confidencial** activo, el backend bloquea cualquier conexión con Claude.
 | Ajustes | Nombre, personalidad (por defecto con humor) + instrucciones propias, API key en el llavero del sistema, modelo de Claude, voz. |
 | Control de apps | Herramientas `open_app`, `type_text` y `press_keys` para el modelo local («abre Notas y escribe…», «escribe en Claude…»). En Mac pide el permiso de Accesibilidad. Se puede desactivar en Ajustes. |
 | Interfaz | Mismo lenguaje visual que RackMap: barra lateral con conversaciones (buscar, borrar), tema oscuro/claro/sistema. |
+| H.A.L.O. | Control de **todo el ordenador** con gestos de la mano por la cámara (switch «Gestos»). MediaPipe Hand Landmarker (21 puntos por mano) en un Web Worker dentro de un HUD transparente que deja pasar los clics. Índice = cursor, pellizco = clic/arrastrar, pulgar+corazón = clic derecho, dos manos = maximizar/restaurar/media pantalla, deslizar la palma = cambiar de escritorio, puño 1 s = minimizar, palma quieta = alto (pausa escucha y gestos). Ventanas con Accessibility en Mac y Win32 en Windows (`window_manager.rs`). |
 | Persistencia | Conversaciones en SQLite (`tauri-plugin-sql`); ajustes en `settings.json` del directorio de configuración. |
 
 ## Requisitos para compilar
@@ -54,8 +55,11 @@ src/                      Frontend React
   components/             Cabecera, chat, compositor, ajustes
   lib/api.ts              Comandos y eventos tipados de Tauri
   lib/db.ts               SQLite
+  halo/                   HUD, worker de visión y máquina de estados de gestos (con tests)
 src-tauri/src/
   llm/local.rs            Descarga y gestión de llama-server + chat en streaming
+  halo.rs                 H.A.L.O.: HUD, ratón y acciones de los gestos
+  window_manager.rs       Maximizar/colocar/minimizar la ventana activa (Mac y Windows)
   control.rs              Abrir apps, escribir y pulsar atajos (enigo)
   llm/claude.rs           Cliente de Claude con el bloqueo confidencial
   router.rs               Enrutador local → Claude
@@ -68,6 +72,6 @@ src-tauri/src/
 ## Hoja de ruta
 
 1. **Básico funcional** (esta fase).
-2. Funciones: memoria compacta a largo plazo, skills, H.A.L.O. (gestos con la webcam).
+2. Funciones: H.A.L.O. (hecho), memoria compacta a largo plazo, skills.
 3. UI/UX: HUD transparente estilo *liquid glass*, atajos globales.
 4. Consumo y batería: wake word dedicada más ligera, CUDA en Windows, ajustes finos.
