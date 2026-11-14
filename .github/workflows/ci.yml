@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -30,5 +31,16 @@ jobs:
       - name: Tests de Rust
         working-directory: src-tauri
         run: cargo test
-      - name: Compilar la app (sin instalador)
+      - name: Compilar la app (Windows, sin instalador)
+        if: runner.os == 'Windows'
         run: pnpm tauri build --no-bundle
+      - name: Crear el .dmg (macOS Apple Silicon)
+        if: runner.os == 'macOS'
+        run: pnpm tauri build --bundles dmg
+      - name: Subir el .dmg
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nova-macOS-arm64-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
