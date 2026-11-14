@@ -1,0 +1,60 @@
+name: Release
+
+# Publica los instaladores (.dmg de macOS y .exe de Windows) en GitHub Releases.
+# Se lanza al actualizar main (o la rama de trabajo mientras no se fusione el PR),
+# al subir una etiqueta vX.Y.Z o a mano desde la pestaña Actions. La versión sale de
+# tauri.conf.json: si ya existe la release de esa versión, se reemplazan sus instaladores.
+on:
+  push:
+    branches: [main, claude/project-thread-mxd8pi]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --bundles app,dmg
+          - os: windows-latest
+            args: --bundles nsis
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Nova v__VERSION__
+          releaseBody: |
+            Instaladores de Nova.
+
+            - **macOS (Apple Silicon)**: descarga el `.dmg`, arrastra Nova a Aplicaciones. La primera vez, Ajustes del Sistema → Privacidad y seguridad → «Abrir igualmente».
+            - **Windows**: descarga el `.exe` (instalador). Si sale SmartScreen, «Más información» → «Ejecutar de todas formas».
+
+            En el primer arranque Nova descarga ~2,7 GB (motor y modelos).
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
