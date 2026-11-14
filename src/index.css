@@ -334,3 +334,4 @@ html.halo-overlay, html.halo-overlay body, html.halo-overlay #root { background:
 }
 .halo-card p { margin: 6px 0 12px; color: var(--muted); line-height: 1.4; }
 .halo-help { margin: 4px 0 0; padding-left: 18px; line-height: 1.55; }
+.skill-list { margin: 0; padding-left: 18px; line-height: 1.55; }

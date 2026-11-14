@@ -9,16 +9,17 @@ use tauri::{AppHandle, Emitter};
 use tokio::task::AbortHandle;
 
 use crate::intents::{self, PrivacyCommand};
-use crate::llm::claude::{ClaudeClient, ConfidentialBlocked, MissingApiKey};
-use crate::control;
+use crate::llm::claude::{sanitize, ClaudeClient, ConfidentialBlocked, MissingApiKey};
 use crate::llm::local::{escalate_tool, ChatMessage, LocalEngine, LocalOutcome};
 use crate::persona;
 use crate::settings::SettingsStore;
+use crate::skills::{self, Skills};
+use crate::tools;
 
 /// Cuántos mensajes del historial se envían al modelo (la memoria compacta llega en fase 2).
 const HISTORY_WINDOW: usize = 20;
 /// Máximo de rondas de herramientas por petición.
-const MAX_TOOL_STEPS: usize = 5;
+const MAX_TOOL_STEPS: usize = 12;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -61,6 +62,7 @@ pub struct Router {
     settings: Arc<SettingsStore>,
     local: Arc<LocalEngine>,
     claude: Arc<ClaudeClient>,
+    skills: Arc<Skills>,
     current: Mutex<Option<(String, AbortHandle)>>,
 }
 
@@ -70,12 +72,14 @@ impl Router {
         settings: Arc<SettingsStore>,
         local: Arc<LocalEngine>,
         claude: Arc<ClaudeClient>,
+        skills: Arc<Skills>,
     ) -> Arc<Self> {
         Arc::new(Self {
             app,
             settings,
             local,
             claude,
+            skills,
             current: Mutex::new(None),
         })
     }
@@ -183,16 +187,14 @@ impl Router {
             return;
         }
         let settings = self.settings.get();
-        let system = persona::system_prompt(&settings, true, via_voice);
+        let system = persona::system_prompt(&settings, true, via_voice) + &self.skills_prompt(history);
         self.emit_route(id, Engine::Local, None);
 
         let mut tools = Vec::new();
         if can_escalate {
             tools.push(escalate_tool());
         }
-        if settings.app_control {
-            tools.extend(control::tool_definitions());
-        }
+        tools.extend(tools::definitions(&settings));
 
         let mut messages = vec![json!({"role": "system", "content": system})];
         messages.extend(history.iter().map(|m| json!({"role": m.role, "content": m.content})));
@@ -231,12 +233,10 @@ impl Router {
                     }));
                     for c in &calls {
                         let args: Value = serde_json::from_str(&c.arguments).unwrap_or(Value::Null);
-                        let output = if control::is_control_tool(&c.name) && settings.app_control {
-                            self.emit_action(id, control::describe(&c.name, &args));
-                            control::execute(&self.app, &c.name, &args).await
-                        } else {
-                            "Error: herramienta no disponible".to_string()
-                        };
+                        if tools::visible(&c.name) {
+                            self.emit_action(id, tools::describe(&c.name, &args));
+                        }
+                        let output = tools::execute(&self.app, &self.skills, &settings, &c.name, &args).await;
                         messages.push(json!({"role": "tool", "tool_call_id": c.id, "content": output}));
                     }
                 }
@@ -252,25 +252,74 @@ impl Router {
         self.emit_done(id, Engine::Local, said, None, via_voice);
     }
 
+    /// Skills que encajan con la última petición + la lista de todas.
+    fn skills_prompt(&self, history: &[ChatMessage]) -> String {
+        let last = history.iter().rev().find(|m| m.role == "user").map(|m| m.content.as_str()).unwrap_or("");
+        let all = self.skills.all();
+        let matched = skills::matching(&all, last);
+        skills::prompt_section(&all, &matched)
+    }
+
     async fn run_claude(&self, id: &str, history: &[ChatMessage], note: Option<String>, via_voice: bool) {
         let settings = self.settings.get();
-        let system = persona::system_prompt(&settings, false, via_voice);
+        let system = persona::system_prompt(&settings, false, via_voice) + &self.skills_prompt(history);
         self.emit_route(id, Engine::Claude, note);
-        match self.claude.chat(&system, history, self.delta_sink(id)).await {
-            Ok(t) => self.emit_done(id, Engine::Claude, t, None, via_voice),
-            Err(e) if e.downcast_ref::<ConfidentialBlocked>().is_some() => {
-                self.emit_route(id, Engine::Local, Some("Modo Confidencial: resuelvo en local".into()));
-                Box::pin(self.run_local(id, history, false, via_voice)).await;
+        let tool_defs = tools::definitions(&settings);
+        let mut messages = sanitize(history);
+        let mut said = String::new();
+
+        for _ in 0..MAX_TOOL_STEPS * 2 {
+            let turn = match self.claude.turn(&system, &messages, &tool_defs, self.delta_sink(id)).await {
+                Ok(t) => t,
+                Err(e) if e.downcast_ref::<ConfidentialBlocked>().is_some() => {
+                    self.emit_route(id, Engine::Local, Some("Modo Confidencial: resuelvo en local".into()));
+                    Box::pin(self.run_local(id, history, false, via_voice)).await;
+                    return;
+                }
+                Err(e) if e.downcast_ref::<MissingApiKey>().is_some() => {
+                    self.emit_route(
+                        id,
+                        Engine::Local,
+                        Some("Sin API key de Claude: lo intento en local (añádela en Ajustes)".into()),
+                    );
+                    Box::pin(self.run_local(id, history, false, via_voice)).await;
+                    return;
+                }
+                Err(e) => {
+                    self.emit_done(id, Engine::Claude, said, Some(format!("{e:#}")), via_voice);
+                    return;
+                }
+            };
+            if !turn.text.trim().is_empty() {
+                if !said.is_empty() {
+                    said.push_str("\n\n");
+                }
+                said.push_str(&turn.text);
             }
-            Err(e) if e.downcast_ref::<MissingApiKey>().is_some() => {
-                self.emit_route(
-                    id,
-                    Engine::Local,
-                    Some("Sin API key de Claude: lo intento en local (añádela en Ajustes)".into()),
-                );
-                Box::pin(self.run_local(id, history, false, via_voice)).await;
+            if turn.tool_uses.is_empty() {
+                self.emit_done(id, Engine::Claude, said, None, via_voice);
+                return;
             }
-            Err(e) => self.emit_done(id, Engine::Claude, String::new(), Some(format!("{e:#}")), via_voice),
+            messages.push(json!({"role": "assistant", "content": turn.content}));
+            let mut results = Vec::new();
+            for t in &turn.tool_uses {
+                if tools::visible(&t.name) {
+                    self.emit_action(id, tools::describe(&t.name, &t.input));
+                }
+                let output = tools::execute(&self.app, &self.skills, &settings, &t.name, &t.input).await;
+                let is_error = output.starts_with("Error:");
+                results.push(json!({
+                    "type": "tool_result",
+                    "tool_use_id": t.id,
+                    "content": output,
+                    "is_error": is_error,
+                }));
+            }
+            messages.push(json!({"role": "user", "content": results}));
         }
+        if said.trim().is_empty() {
+            said = "Hecho.".into();
+        }
+        self.emit_done(id, Engine::Claude, said, None, via_voice);
     }
 }

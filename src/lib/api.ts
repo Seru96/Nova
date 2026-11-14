@@ -16,8 +16,9 @@ export interface Settings {
   voice_name: string;
   app_control: boolean;
   theme: Theme;
+  file_access: boolean;
   halo: boolean;
-  halo_preview: boolean;
+  halo_camera: boolean;
 }
 
 export type Theme = "dark" | "hybrid" | "light";
@@ -59,6 +60,8 @@ export const api = {
   speak: (text: string, voice?: string) => invoke<void>("speak", { text, voice: voice ?? null }),
   stopSpeaking: () => invoke<void>("stop_speaking"),
   listVoices: () => invoke<VoiceInfo[]>("list_voices"),
+  listSkills: () => invoke<{ name: string; description: string }[]>("list_skills"),
+  openSkillsFolder: () => invoke<void>("open_skills_folder"),
   haloSet: (on: boolean) => invoke<Settings>("halo_set", { on }),
   haloReady: (ready: boolean) => invoke<void>("halo_ready", { ready }),
   haloPointer: (x: number, y: number) => invoke<void>("halo_pointer", { x, y }),

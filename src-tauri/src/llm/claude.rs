@@ -54,12 +54,15 @@ impl ClaudeClient {
         Ok(())
     }
 
-    pub async fn chat(
+    /// Una vuelta de conversación con herramientas. `messages` va en formato de la API
+    /// (empieza por `user`); `tools` en formato OpenAI (se convierten aquí).
+    pub async fn turn(
         &self,
         system: &str,
-        history: &[ChatMessage],
+        messages: &[Value],
+        tools: &[Value],
         mut on_delta: impl FnMut(&str),
-    ) -> Result<String> {
+    ) -> Result<ClaudeTurn> {
         self.guard()?;
         let key = secrets::get_api_key().ok_or(MissingApiKey)?;
         let model = self.settings.get().claude_model;
@@ -69,8 +72,11 @@ impl ClaudeClient {
             "max_tokens": 16000,
             "stream": true,
             "system": system,
-            "messages": sanitize(history),
+            "messages": messages,
         });
+        if !tools.is_empty() {
+            body["tools"] = Value::Array(tools.iter().map(to_anthropic_tool).collect());
+        }
         let with_fallback = supports_default_fallback(&model);
         if with_fallback {
             body["fallbacks"] = json!("default");
@@ -98,7 +104,9 @@ impl ClaudeClient {
             bail!("Claude respondió {status}: {msg}");
         }
 
-        let mut out = String::new();
+        let mut out = ClaudeTurn::default();
+        // Bloques de contenido por índice: texto o tool_use (con su JSON a trozos).
+        let mut blocks: Vec<(Value, String)> = Vec::new();
         let mut buf = String::new();
         let mut stream = resp.bytes_stream();
         while let Some(chunk) = stream.next().await {
@@ -113,19 +121,33 @@ impl ClaudeClient {
                 let Ok(v) = serde_json::from_str::<Value>(data.trim()) else {
                     continue;
                 };
+                let idx = v["index"].as_u64().unwrap_or(0) as usize;
                 match v["type"].as_str() {
+                    Some("content_block_start") => {
+                        while blocks.len() <= idx {
+                            blocks.push((Value::Null, String::new()));
+                        }
+                        blocks[idx].0 = v["content_block"].clone();
+                    }
                     Some("content_block_delta") => {
                         if v["delta"]["type"] == "text_delta" {
                             if let Some(t) = v["delta"]["text"].as_str() {
-                                out.push_str(t);
+                                out.text.push_str(t);
                                 on_delta(t);
+                                if let Some(b) = blocks.get_mut(idx) {
+                                    b.1.push_str(t);
+                                }
+                            }
+                        } else if v["delta"]["type"] == "input_json_delta" {
+                            if let (Some(b), Some(t)) = (blocks.get_mut(idx), v["delta"]["partial_json"].as_str()) {
+                                b.1.push_str(t);
                             }
                         }
                     }
                     Some("message_delta") => {
                         if v["delta"]["stop_reason"] == "refusal" {
                             let note = "\n\n(Claude ha declinado esta petición.)";
-                            out.push_str(note);
+                            out.text.push_str(note);
                             on_delta(note);
                         }
                     }
@@ -137,8 +159,57 @@ impl ClaudeClient {
                 }
             }
         }
+
+        let mut content = Vec::new();
+        for (block, acc) in blocks {
+            match block["type"].as_str() {
+                Some("text") => {
+                    if !acc.is_empty() {
+                        content.push(json!({"type": "text", "text": acc}));
+                    }
+                }
+                Some("tool_use") => {
+                    let input: Value = if acc.trim().is_empty() {
+                        json!({})
+                    } else {
+                        serde_json::from_str(&acc).unwrap_or(json!({}))
+                    };
+                    let id = block["id"].as_str().unwrap_or_default().to_string();
+                    let name = block["name"].as_str().unwrap_or_default().to_string();
+                    content.push(json!({"type": "tool_use", "id": id, "name": name, "input": input}));
+                    out.tool_uses.push(ToolUse { id, name, input });
+                }
+                _ => {}
+            }
+        }
+        out.content = Value::Array(content);
         Ok(out)
     }
+}
+
+#[derive(Debug, Default)]
+pub struct ClaudeTurn {
+    pub text: String,
+    pub tool_uses: Vec<ToolUse>,
+    /// Bloques de la respuesta, para devolverlos tal cual en la siguiente vuelta.
+    pub content: Value,
+}
+
+#[derive(Debug)]
+pub struct ToolUse {
+    pub id: String,
+    pub name: String,
+    pub input: Value,
+}
+
+/// Herramienta en formato OpenAI (la del modelo local) → formato de la API de Claude.
+fn to_anthropic_tool(t: &Value) -> Value {
+    let f = &t["function"];
+    json!({
+        "name": f["name"],
+        "description": f["description"],
+        "input_schema": f["parameters"],
+    })
 }
 
 /// Los modelos que aceptan `fallbacks: "default"` (rescate ante rechazos de los clasificadores).
@@ -149,7 +220,7 @@ fn supports_default_fallback(model: &str) -> bool {
 }
 
 /// La API exige empezar por `user` y alternar roles: fusionamos y limpiamos.
-fn sanitize(history: &[ChatMessage]) -> Vec<Value> {
+pub fn sanitize(history: &[ChatMessage]) -> Vec<Value> {
     let mut out: Vec<(String, String)> = Vec::new();
     for m in history {
         let role = if m.role == "assistant" { "assistant" } else { "user" };
@@ -184,6 +255,14 @@ mod tests {
     }
 
     #[test]
+    fn converts_tools() {
+        let t = json!({"type": "function", "function": {"name": "read_file", "description": "d", "parameters": {"type": "object"}}});
+        let a = to_anthropic_tool(&t);
+        assert_eq!(a["name"], "read_file");
+        assert_eq!(a["input_schema"]["type"], "object");
+    }
+
+    #[test]
     fn sanitize_alternates_and_starts_with_user() {
         let h = vec![
             m("assistant", "hola"),
@@ -204,7 +283,7 @@ mod tests {
         let store = Arc::new(SettingsStore::load(dir));
         store.update(|s| s.confidential = true);
         let client = ClaudeClient::new(store);
-        let err = client.chat("sys", &[m("user", "hola")], |_| {}).await.unwrap_err();
+        let err = client.turn("sys", &sanitize(&[m("user", "hola")]), &[], |_| {}).await.unwrap_err();
         assert!(err.downcast_ref::<ConfidentialBlocked>().is_some());
     }
 }

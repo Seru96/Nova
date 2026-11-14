@@ -126,7 +126,7 @@ pub fn show_overlay(app: &AppHandle) -> Result<WebviewWindow> {
         Some(w) => w,
         None => {
             let w = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("index.html#overlay".into()))
-                .title("Nova H.A.L.O.")
+                .title("Nova")
                 .transparent(true)
                 .decorations(false)
                 .shadow(false)

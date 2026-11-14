@@ -55,11 +55,25 @@ pub fn system_prompt(s: &Settings, local: bool, via_voice: bool) -> String {
     if via_voice {
         p.push_str("\nEsta petición llega por voz: responde en una o dos frases naturales.");
     }
-    if local && s.app_control {
+    if s.app_control || s.file_access {
+        p.push_str("\n\nPuedes actuar en el ordenador con herramientas:");
+        if s.app_control {
+            p.push_str(
+                "\n- Apps: `open_app`, `type_text` (abre la app y escribe), `press_keys` (atajos) y `open_url` \
+                 (webs, búsquedas, correos con mailto:, enlaces de apps como spotify:).",
+            );
+        }
+        if s.file_access {
+            p.push_str(
+                "\n- Archivos de la carpeta del usuario: `list_dir`, `find_files`, `search_text`, `read_file`, \
+                 `write_file`, `edit_file` y `open_path`. Rutas como ~/Escritorio o ~/Documentos. Nunca borras nada.",
+            );
+        }
         p.push_str(
-            "\n\nPuedes controlar el ordenador con las herramientas `open_app`, `type_text` y `press_keys`. \
-             Úsalas cuando te pidan abrir una app, escribir o enviar algo en otra app (incluida la app de Claude) o pulsar un atajo. \
-             Escribe exactamente el texto que pida el usuario. Después confirma en una frase lo que has hecho.",
+            "\nREGLAS: haz la tarea completa encadenando herramientas sin pararte a preguntar. Abrir una app casi \
+             nunca es el final: si te piden escribir, buscar o crear algo, continúa con la siguiente herramienta \
+             hasta terminar. Usa los datos exactos que da el usuario. Si una herramienta falla, prueba otra forma \
+             una vez y, si no, explica qué ha pasado. Al acabar, confirma en una frase lo que has hecho.",
         );
     }
     if local {

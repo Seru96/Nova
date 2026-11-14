@@ -47,10 +47,7 @@ export function Sidebar({ conversations, currentId, engine, voice, onNew, onOpen
       <div className="side-drag" data-tauri-drag-region />
       <div className="brand" data-tauri-drag-region>
         <div className={`orb ${live ? "live" : ""} ${engine.phase !== "ready" ? "off" : ""}`} />
-        <div className="brand-name">
-          Nova
-          <small>ASISTENTE</small>
-        </div>
+        <div className="brand-name">Nova</div>
       </div>
 
       <button className={`nav-item ${currentId === null ? "on" : ""}`} onClick={onNew}>

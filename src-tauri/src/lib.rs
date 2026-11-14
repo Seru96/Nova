@@ -3,6 +3,7 @@
 mod access;
 mod control;
 mod download;
+mod files;
 mod halo;
 mod intents;
 mod llm;
@@ -10,6 +11,8 @@ mod persona;
 mod router;
 mod secrets;
 mod settings;
+mod skills;
+mod tools;
 mod voice;
 mod window_manager;
 
@@ -30,6 +33,7 @@ struct AppState {
     router: Arc<Router>,
     voice: Arc<VoiceService>,
     pointer: halo::Pointer,
+    skills: Arc<skills::Skills>,
 }
 
 type R<T> = Result<T, String>;
@@ -134,6 +138,37 @@ fn halo_stop_listening(app: tauri::AppHandle, state: State<AppState>) {
     state.voice.speaker.stop();
     let s = state.settings.update(|s| s.listening = false);
     let _ = app.emit("settings://changed", &s);
+}
+
+// ---------- Skills ----------
+
+/// Abre la carpeta de skills para que el usuario añada o edite las suyas.
+#[tauri::command]
+fn open_skills_folder(state: State<AppState>) -> R<()> {
+    let dir = state.skills.dir().to_path_buf();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(&dir).status();
+    #[cfg(windows)]
+    let r = std::process::Command::new("explorer").arg(&dir).status();
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let r = std::process::Command::new("xdg-open").arg(&dir).status();
+    r.map(|_| ()).map_err(err)
+}
+
+#[derive(serde::Serialize)]
+struct SkillInfo {
+    name: String,
+    description: String,
+}
+
+#[tauri::command]
+fn list_skills(state: State<AppState>) -> Vec<SkillInfo> {
+    state
+        .skills
+        .all()
+        .into_iter()
+        .map(|s| SkillInfo { name: s.name, description: s.description })
+        .collect()
 }
 
 // ---------- API key (llavero del sistema) ----------
@@ -251,10 +286,11 @@ pub fn run() {
             let config_dir = app.path().app_config_dir()?;
             let data_dir = app.path().app_data_dir()?;
 
+            let skills = Arc::new(skills::Skills::new(&config_dir));
             let settings = Arc::new(SettingsStore::load(config_dir));
             let engine = LocalEngine::new(handle.clone(), data_dir.join("engine"));
             let claude = Arc::new(ClaudeClient::new(settings.clone()));
-            let router = Router::new(handle.clone(), settings.clone(), engine.clone(), claude);
+            let router = Router::new(handle.clone(), settings.clone(), engine.clone(), claude, skills.clone());
             let voice = VoiceService::new(handle.clone(), engine.clone());
 
             // Arranque del motor local en segundo plano (descarga si hace falta).
@@ -286,6 +322,7 @@ pub fn run() {
                 router,
                 voice,
                 pointer: halo::Pointer::new(handle.clone()),
+                skills,
             });
             Ok(())
         })
@@ -312,6 +349,8 @@ pub fn run() {
             halo_window,
             halo_desktop,
             halo_stop_listening,
+            open_skills_folder,
+            list_skills,
         ])
         .build(tauri::generate_context!())
         .expect("error al iniciar Nova")

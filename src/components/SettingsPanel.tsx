@@ -43,10 +43,12 @@ export function SettingsPanel({ settings, onClose, onSaved, onError }: Props) {
   const [hasKey, setHasKey] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [voices, setVoices] = useState<VoiceInfo[]>([]);
+  const [skills, setSkills] = useState<{ name: string; description: string }[]>([]);
 
   useEffect(() => {
     api.hasApiKey().then(setHasKey);
     api.listVoices().then((v) => setVoices(v ?? [])).catch(() => setVoices([]));
+    api.listSkills().then((k) => setSkills(k ?? [])).catch(() => setSkills([]));
   }, []);
 
   // Vista previa del tema mientras se elige.
@@ -148,18 +150,43 @@ export function SettingsPanel({ settings, onClose, onSaved, onError }: Props) {
               checked={s.app_control}
               onChange={(v) => set("app_control", v)}
             />
+            <Switch
+              label="Permitir que Nova lea, busque, cree y edite archivos de tu carpeta de usuario"
+              checked={s.file_access}
+              onChange={(v) => set("file_access", v)}
+            />
             <p className="hint">
               En Mac, la primera vez que escriba en otra app te pedirá el permiso de Accesibilidad (Ajustes del Sistema →
-              Privacidad y seguridad → Accesibilidad).
+              Privacidad y seguridad → Accesibilidad). Con los archivos nunca borra nada ni toca carpetas de contraseñas.
             </p>
+          </section>
+
+          <section>
+            <h4>Skills</h4>
+            <ul className="hint skill-list">
+              {skills.map((k) => (
+                <li key={k.name}>
+                  <b>{k.name}</b>: {k.description}
+                </li>
+              ))}
+            </ul>
+            <div className="inline">
+              <p className="hint">
+                Recetas paso a paso para tareas, con el mismo formato que las skills de Claude (una carpeta con un SKILL.md).
+                Puedes editarlas o añadir las tuyas.
+              </p>
+              <button className="btn" onClick={() => api.openSkillsFolder().catch((e) => onError(String(e)))}>
+                Abrir carpeta
+              </button>
+            </div>
           </section>
 
           <section>
             <h4>H.A.L.O. · gestos con la cámara</h4>
             <Switch
               label="Mostrar la miniatura de la cámara con tu mano"
-              checked={s.halo_preview}
-              onChange={(v) => set("halo_preview", v)}
+              checked={s.halo_camera}
+              onChange={(v) => set("halo_camera", v)}
             />
             <ul className="hint halo-help">
               <li><b>Índice estirado</b>: mueve el cursor.</li>

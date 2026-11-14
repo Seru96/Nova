@@ -51,8 +51,8 @@ export function Overlay() {
 
   useEffect(() => {
     document.documentElement.classList.add("halo-overlay");
-    api.getSettings().then((s) => setPreview(s.halo_preview)).catch(() => {});
-    const unsub = on("settings://changed", (s) => setPreview(s.halo_preview));
+    api.getSettings().then((s) => setPreview(s.halo_camera)).catch(() => {});
+    const unsub = on("settings://changed", (s) => setPreview(s.halo_camera));
     const unsubAccess = on("halo://access", (a) => setNoAccess(!a.ok));
 
     let alive = true;

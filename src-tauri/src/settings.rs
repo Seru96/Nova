@@ -48,10 +48,12 @@ pub struct Settings {
     pub app_control: bool,
     /// Tema de la interfaz: "dark", "light" o "system".
     pub theme: String,
+    /// Permitir que Nova (local o Claude) lea, busque y escriba archivos del usuario.
+    pub file_access: bool,
     /// H.A.L.O.: control por gestos con la cámara.
     pub halo: bool,
     /// Mostrar la miniatura de la cámara con el esqueleto de la mano en el HUD.
-    pub halo_preview: bool,
+    pub halo_camera: bool,
 }
 
 impl Default for Settings {
@@ -68,8 +70,9 @@ impl Default for Settings {
             voice_name: String::new(),
             app_control: true,
             theme: "dark".into(),
+            file_access: true,
             halo: false,
-            halo_preview: true,
+            halo_camera: false,
         }
     }
 }

@@ -52,6 +52,20 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "open_url",
+                "description": "Abre un enlace: una web (https://…), una búsqueda, un correo nuevo (mailto:…) o una app por su enlace (spotify:search:…).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "Enlace completo."}
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "press_keys",
                 "description": "Pulsa un atajo de teclado, p. ej. \"cmd+t\", \"ctrl+shift+n\", \"enter\", \"esc\".",
                 "parameters": {
@@ -68,7 +82,7 @@ pub fn tool_definitions() -> Vec<Value> {
 }
 
 pub fn is_control_tool(name: &str) -> bool {
-    matches!(name, "open_app" | "type_text" | "press_keys")
+    matches!(name, "open_app" | "type_text" | "press_keys" | "open_url")
 }
 
 /// Texto corto para enseñar en el chat mientras se ejecuta la acción.
@@ -79,6 +93,14 @@ pub fn describe(name: &str, args: &Value) -> String {
         "type_text" if !app.is_empty() => format!("Escribiendo en {app}"),
         "type_text" => "Escribiendo en la app activa".into(),
         "press_keys" => format!("Pulsando {}", args["keys"].as_str().unwrap_or("")),
+        "open_url" => {
+            let u = args["url"].as_str().unwrap_or("");
+            if u.starts_with("mailto:") {
+                "Preparando el correo".into()
+            } else {
+                format!("Abriendo {}", u.chars().take(60).collect::<String>())
+            }
+        }
         _ => name.to_string(),
     }
 }
@@ -87,10 +109,13 @@ pub fn describe(name: &str, args: &Value) -> String {
 pub async fn execute(app: &AppHandle, name: &str, args: &Value) -> String {
     let result = match name {
         "open_app" => match args["app"].as_str() {
-            Some(a) => open_app(a).await.map(|n| format!("Abierta: {n}")),
+            Some(a) => open_app(a)
+                .await
+                .map(|n| format!("Abierta: {n}. Si la tarea tiene más pasos (escribir, buscar, crear algo…), sigue ahora con la siguiente herramienta; no te pares aquí.")),
             None => Err(anyhow!("falta el nombre de la app")),
         },
         "type_text" => type_text(app, args).await,
+        "open_url" => open_url(args["url"].as_str().unwrap_or_default()).await,
         "press_keys" => press_keys(app, args).await,
         _ => Err(anyhow!("herramienta desconocida")),
     };
@@ -98,6 +123,34 @@ pub async fn execute(app: &AppHandle, name: &str, args: &Value) -> String {
         Ok(msg) => msg,
         Err(e) => format!("Error: {e:#}"),
     }
+}
+
+/// Abre un enlace con la app que le toca. Solo esquemas conocidos (nada de `file:` ni scripts).
+async fn open_url(url: &str) -> Result<String> {
+    let url = url.trim();
+    let scheme = url.split(':').next().unwrap_or("").to_lowercase();
+    const ALLOWED: &[&str] = &["http", "https", "mailto", "spotify", "music", "tel", "facetime", "maps", "whatsapp", "tg", "slack", "zoommtg", "msteams"];
+    if !ALLOWED.contains(&scheme.as_str()) {
+        bail!("solo abro enlaces web, de correo o de apps conocidas (no «{scheme}:»)");
+    }
+    #[cfg(target_os = "macos")]
+    let ok = tokio::process::Command::new("open").arg(url).status().await?.success();
+    #[cfg(windows)]
+    let ok = {
+        // rundll32 evita que cmd interprete los & de la URL.
+        tokio::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .creation_flags(0x0800_0000)
+            .status()
+            .await?
+            .success()
+    };
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let ok = tokio::process::Command::new("xdg-open").arg(url).status().await?.success();
+    if !ok {
+        bail!("no se pudo abrir el enlace");
+    }
+    Ok(format!("Abierto: {url}"))
 }
 
 async fn focus_target(app: &AppHandle, target: Option<&str>) -> Result<()> {
