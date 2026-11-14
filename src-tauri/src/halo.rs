@@ -6,10 +6,13 @@
 //! ratón, clicar/arrastrar, colocar ventanas y cambiar de escritorio.
 
 use std::sync::mpsc::{channel, Sender};
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-use enigo::{Button, Coordinate, Direction, Enigo, Mouse};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+#[cfg(not(windows))]
+use enigo::Coordinate;
+use enigo::{Button, Direction, Mouse};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::window_manager::{self, DesktopDir, WindowAction, WindowManager};
 
@@ -31,13 +34,66 @@ struct AccessState {
 }
 
 enum Cmd {
-    /// Posición normalizada 0..1 dentro de la pantalla principal.
+    /// Posición normalizada 0..1 sobre el conjunto de pantallas.
     Move(f64, f64),
     Button(ButtonAction),
 }
 
-/// Hilo dedicado al ratón: mantiene un único `Enigo` vivo (crearlo en cada
-/// movimiento es caro en macOS) y no bloquea los comandos de Tauri.
+/// Rectángulo que cubre todas las pantallas, en las coordenadas que usa el ratón
+/// (puntos en macOS, píxeles físicos en Windows).
+#[derive(Debug, Clone, Copy)]
+struct Bounds {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+}
+
+fn screen_bounds(app: &AppHandle) -> Bounds {
+    let mut x0 = f64::MAX;
+    let mut y0 = f64::MAX;
+    let mut x1 = f64::MIN;
+    let mut y1 = f64::MIN;
+    for m in app.available_monitors().unwrap_or_default() {
+        // En macOS el ratón va en puntos: pasamos de píxeles a puntos con la escala de cada pantalla.
+        let k = if cfg!(target_os = "macos") { m.scale_factor() } else { 1.0 };
+        let (px, py) = (m.position().x as f64 / k, m.position().y as f64 / k);
+        let (w, h) = (m.size().width as f64 / k, m.size().height as f64 / k);
+        x0 = x0.min(px);
+        y0 = y0.min(py);
+        x1 = x1.max(px + w);
+        y1 = y1.max(py + h);
+    }
+    if x0 >= x1 || y0 >= y1 {
+        return Bounds { x: 0.0, y: 0.0, w: 1440.0, h: 900.0 };
+    }
+    Bounds { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+#[cfg(windows)]
+fn move_cursor(x: i32, y: i32) -> Result<()> {
+    // SetCursorPos usa el escritorio virtual completo (todas las pantallas).
+    unsafe { windows::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y) }.map_err(|e| anyhow!("{e}"))
+}
+
+#[cfg(not(windows))]
+fn move_cursor(x: i32, y: i32) -> Result<()> {
+    crate::access::with_enigo(move |e| e.move_mouse(x, y, Coordinate::Abs).map_err(|e| anyhow!("{e}")))
+}
+
+fn press(b: ButtonAction) -> Result<()> {
+    crate::access::with_enigo(move |e| {
+        match b {
+            ButtonAction::Down => e.button(Button::Left, Direction::Press),
+            ButtonAction::Up => e.button(Button::Left, Direction::Release),
+            ButtonAction::Click => e.button(Button::Left, Direction::Click),
+            ButtonAction::RightClick => e.button(Button::Right, Direction::Click),
+        }
+        .map_err(|e| anyhow!("{e}"))
+    })
+}
+
+/// Hilo dedicado al ratón: junta los movimientos atrasados y no bloquea los comandos de Tauri.
 pub struct Pointer {
     tx: Sender<Cmd>,
 }
@@ -48,10 +104,9 @@ impl Pointer {
         std::thread::Builder::new()
             .name("halo-pointer".into())
             .spawn(move || {
-                let mut enigo: Option<Enigo> = None;
-                let mut screen = (0i32, 0i32);
+                let mut bounds: Option<(Bounds, Instant)> = None;
                 // Sin permiso, reintentamos como mucho cada 2 s (y sin repetir el aviso).
-                let mut retry_at = std::time::Instant::now();
+                let mut retry_at = Instant::now();
                 let mut reported: Option<bool> = None;
                 while let Ok(mut cmd) = rx.recv() {
                     // Si se acumulan movimientos, solo cuenta el último.
@@ -64,46 +119,41 @@ impl Pointer {
                             }
                         }
                     }
-                    if enigo.is_none() {
-                        if std::time::Instant::now() < retry_at {
-                            continue;
-                        }
-                        match crate::access::enigo() {
-                            Ok(e) => {
-                                screen = e.main_display().unwrap_or((1440, 900));
-                                enigo = Some(e);
-                                if reported != Some(true) {
-                                    let _ = app.emit("halo://access", AccessState { ok: true, error: None });
-                                    reported = Some(true);
-                                }
-                            }
-                            Err(e) => {
-                                retry_at = std::time::Instant::now() + std::time::Duration::from_secs(2);
-                                if reported != Some(false) {
-                                    log::warn!("H.A.L.O. sin control del ratón: {e:#}");
-                                    let _ = app.emit("halo://access", AccessState { ok: false, error: Some(format!("{e:#}")) });
-                                    reported = Some(false);
-                                }
-                                continue;
-                            }
-                        }
+                    if Instant::now() < retry_at {
+                        continue;
                     }
-                    let e = enigo.as_mut().expect("enigo creado");
                     let r = match cmd {
                         Cmd::Move(x, y) => {
-                            let px = (x.clamp(0.0, 1.0) * (screen.0 - 1) as f64).round() as i32;
-                            let py = (y.clamp(0.0, 1.0) * (screen.1 - 1) as f64).round() as i32;
-                            e.move_mouse(px, py, Coordinate::Abs)
+                            // Las pantallas pueden cambiar (conectar un monitor): refrescamos cada 5 s.
+                            let b = match bounds {
+                                Some((b, t)) if t.elapsed() < Duration::from_secs(5) => b,
+                                _ => {
+                                    let b = screen_bounds(&app);
+                                    bounds = Some((b, Instant::now()));
+                                    b
+                                }
+                            };
+                            let px = (b.x + x.clamp(0.0, 1.0) * (b.w - 1.0)).round() as i32;
+                            let py = (b.y + y.clamp(0.0, 1.0) * (b.h - 1.0)).round() as i32;
+                            move_cursor(px, py)
                         }
-                        Cmd::Button(b) => match b {
-                            ButtonAction::Down => e.button(Button::Left, Direction::Press),
-                            ButtonAction::Up => e.button(Button::Left, Direction::Release),
-                            ButtonAction::Click => e.button(Button::Left, Direction::Click),
-                            ButtonAction::RightClick => e.button(Button::Right, Direction::Click),
-                        },
+                        Cmd::Button(b) => press(b),
                     };
-                    if let Err(err) = r {
-                        log::warn!("H.A.L.O.: {err}");
+                    match r {
+                        Ok(()) => {
+                            if reported != Some(true) {
+                                let _ = app.emit("halo://access", AccessState { ok: true, error: None });
+                                reported = Some(true);
+                            }
+                        }
+                        Err(e) => {
+                            retry_at = Instant::now() + Duration::from_secs(2);
+                            if reported != Some(false) {
+                                log::warn!("H.A.L.O. sin control del ratón: {e:#}");
+                                let _ = app.emit("halo://access", AccessState { ok: false, error: Some(format!("{e:#}")) });
+                                reported = Some(false);
+                            }
+                        }
                     }
                 }
             })
@@ -120,8 +170,28 @@ impl Pointer {
     }
 }
 
-/// Muestra (creándola si hace falta) la ventana HUD a pantalla completa.
-pub fn show_overlay(app: &AppHandle) -> Result<WebviewWindow> {
+/// Tamaño del HUD: una pastilla pequeña, y más alto si se muestra la cámara.
+const HUD_W: f64 = 260.0;
+const HUD_H: f64 = 64.0;
+const HUD_H_CAMERA: f64 = 230.0;
+const HUD_MARGIN: f64 = 16.0;
+
+/// Coloca el HUD en la esquina inferior derecha de la pantalla principal.
+pub fn place_overlay(app: &AppHandle, camera: bool) {
+    let Some(win) = app.get_webview_window(OVERLAY) else { return };
+    let Ok(Some(m)) = win.primary_monitor() else { return };
+    let k = m.scale_factor();
+    let area = m.work_area();
+    let (w, h) = (HUD_W, if camera { HUD_H_CAMERA } else { HUD_H });
+    let x = area.position.x as f64 / k + area.size.width as f64 / k - w - HUD_MARGIN;
+    let y = area.position.y as f64 / k + area.size.height as f64 / k - h - HUD_MARGIN;
+    let _ = win.set_size(LogicalSize::new(w, h));
+    let _ = win.set_position(LogicalPosition::new(x, y));
+}
+
+/// Muestra (creándola si hace falta) el HUD: una ventana pequeña en una esquina.
+/// Antes cubría toda la pantalla y en macOS eso provocaba parpadeos y destellos.
+pub fn show_overlay(app: &AppHandle, camera: bool) -> Result<WebviewWindow> {
     let win = match app.get_webview_window(OVERLAY) {
         Some(w) => w,
         None => {
@@ -141,10 +211,7 @@ pub fn show_overlay(app: &AppHandle) -> Result<WebviewWindow> {
             w
         }
     };
-    if let Ok(Some(m)) = win.primary_monitor() {
-        let _ = win.set_position(*m.position());
-        let _ = win.set_size(*m.size());
-    }
+    place_overlay(app, camera);
     win.show().map_err(|e| anyhow!("{e}"))?;
     Ok(win)
 }

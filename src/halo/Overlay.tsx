@@ -13,7 +13,9 @@ const BONES: [number, number][] = [
   [13, 17], [0, 17], [17, 18], [18, 19], [19, 20],
 ];
 
-const FRAME_MS = 33;
+// 20 fotogramas por segundo bastan para los gestos y gastan mucho menos.
+const FRAME_MS = 50;
+const IS_MAC = navigator.userAgent.includes("Mac");
 
 function dispatch(a: HaloAction) {
   const fail = (e: unknown) => console.warn("H.A.L.O.", e);
@@ -45,9 +47,11 @@ export function Overlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hud, setHud] = useState<HudState | null>(null);
   const [status, setStatus] = useState<Status>({ phase: "starting" });
-  const [preview, setPreview] = useState(true);
+  const [preview, setPreview] = useState(false);
   const [noAccess, setNoAccess] = useState(false);
   const handsRef = useRef<Hand[]>([]);
+  const previewRef = useRef(false);
+  previewRef.current = preview;
 
   useEffect(() => {
     document.documentElement.classList.add("halo-overlay");
@@ -64,12 +68,44 @@ export function Overlay() {
     const engine = new GestureEngine({ aspect: 640 / 480 });
     const worker = new Worker(new URL("./vision.worker.ts", import.meta.url), { type: "module" });
 
+    // Miniatura en espejo con el esqueleto de la mano (solo si está activada).
+    const drawPreview = () => {
+      const c = canvasRef.current;
+      const v = videoRef.current;
+      const ctx = c?.getContext("2d");
+      if (!c || !v || !ctx || v.readyState < 2) return;
+      const w = c.width;
+      const h = c.height;
+      ctx.save();
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(v, 0, 0, w, h);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(10,132,255,0.95)";
+      ctx.fillStyle = "#fff";
+      for (const hand of handsRef.current) {
+        ctx.beginPath();
+        for (const [a, b] of BONES) {
+          ctx.moveTo(hand[a].x * w, hand[a].y * h);
+          ctx.lineTo(hand[b].x * w, hand[b].y * h);
+        }
+        ctx.stroke();
+        for (const p of hand) {
+          ctx.beginPath();
+          ctx.arc(p.x * w, p.y * h, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    };
+
     const fail = (message: string) => {
       if (!alive) return;
       setStatus({ phase: "error", message });
       void api.haloReady(false);
     };
 
+    // Un temporizador en vez de requestAnimationFrame: no despierta la pantalla 60 veces por segundo.
     const loop = () => {
       if (!alive) return;
       const video = videoRef.current;
@@ -81,8 +117,9 @@ export function Overlay() {
           .then((bitmap) => worker.postMessage({ type: "frame", bitmap, ts: now }, [bitmap]))
           .catch(() => (busy = false));
       }
-      frameHandle = requestAnimationFrame(loop);
+      frameHandle = window.setTimeout(loop, FRAME_MS / 2);
     };
+    let lastHud = "";
 
     worker.onmessage = (e: MessageEvent<WorkerOut>) => {
       const m = e.data;
@@ -98,7 +135,14 @@ export function Overlay() {
         busy = false;
         handsRef.current = m.hands;
         for (const a of engine.update(m.hands, m.ts)) dispatch(a);
-        setHud(engine.hud);
+        // Solo se repinta el HUD cuando cambia algo visible.
+        const h = engine.hud;
+        const key = `${h.pose}|${h.hands}|${h.label}|${Math.round(h.progress * 20)}|${h.dragging}|${h.paused}`;
+        if (key !== lastHud) {
+          lastHud = key;
+          setHud(h);
+        }
+        if (previewRef.current) drawPreview();
       }
     };
 
@@ -116,12 +160,13 @@ export function Overlay() {
       const video = videoRef.current!;
       video.srcObject = stream;
       await video.play().catch(() => {});
-      worker.postMessage({ type: "init", base: new URL("/halo", location.href).href });
+      // En Mac la detección va por CPU: la GPU (WebGL) en una ventana transparente provocaba destellos.
+      worker.postMessage({ type: "init", base: new URL("/halo", location.href).href, gpu: !IS_MAC });
     })();
 
     return () => {
       alive = false;
-      cancelAnimationFrame(frameHandle);
+      window.clearTimeout(frameHandle);
       worker.terminate();
       stream?.getTracks().forEach((t) => t.stop());
       void unsub.then((f) => f());
@@ -129,48 +174,6 @@ export function Overlay() {
     };
   }, []);
 
-  // Miniatura en espejo con el esqueleto de la mano.
-  useEffect(() => {
-    if (!preview) return;
-    let raf = 0;
-    const draw = () => {
-      const c = canvasRef.current;
-      const v = videoRef.current;
-      const ctx = c?.getContext("2d");
-      if (c && v && ctx && v.readyState >= 2) {
-        const w = c.width;
-        const h = c.height;
-        ctx.save();
-        ctx.translate(w, 0);
-        ctx.scale(-1, 1);
-        ctx.globalAlpha = 0.55;
-        ctx.drawImage(v, 0, 0, w, h);
-        ctx.globalAlpha = 1;
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "rgba(10,132,255,0.95)";
-        ctx.fillStyle = "#fff";
-        for (const hand of handsRef.current) {
-          ctx.beginPath();
-          for (const [a, b] of BONES) {
-            ctx.moveTo(hand[a].x * w, hand[a].y * h);
-            ctx.lineTo(hand[b].x * w, hand[b].y * h);
-          }
-          ctx.stroke();
-          for (const p of hand) {
-            ctx.beginPath();
-            ctx.arc(p.x * w, p.y * h, 2, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-        ctx.restore();
-      }
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, [preview]);
-
-  const cursor = hud?.cursor;
   const label = noAccess
     ? "Falta el permiso de Accesibilidad: actívalo para Nova en Ajustes del Sistema y reinicia Nova"
     : hud?.paused
@@ -181,19 +184,10 @@ export function Overlay() {
     <div className="halo">
       <video ref={videoRef} muted playsInline className="halo-video" />
 
-      {cursor && !hud?.paused && (
-        <div
-          className={`halo-cursor ${hud?.pose === "pinch" ? "pinch" : ""} ${hud?.dragging ? "drag" : ""}`}
-          style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%` }}
-        />
-      )}
-
       {status.phase === "error" ? (
-        <div className="halo-card">
-          <strong>H.A.L.O.</strong>
-          <p>{status.message}</p>
-          <button className="btn primary" onClick={() => void api.haloSet(false)}>
-            Desactivar gestos
+        <div className="halo-dock">
+          <button className="halo-pill show paused clickable" title={status.message} onClick={() => void api.haloSet(false)}>
+            <span>{status.message.startsWith("No tengo acceso a la cámara") ? "Sin permiso de cámara" : "H.A.L.O. no ha podido arrancar"} · pulsa para apagar</span>
           </button>
         </div>
       ) : (

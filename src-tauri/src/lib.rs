@@ -62,6 +62,7 @@ fn save_settings(app: tauri::AppHandle, state: State<AppState>, settings: Settin
         cur.listening = listening;
         cur.halo = halo;
     });
+    halo::place_overlay(&app, s.halo_camera);
     let _ = app.emit("settings://changed", &s);
     s
 }
@@ -90,7 +91,7 @@ fn set_listening(app: tauri::AppHandle, state: State<AppState>, on: bool) -> R<S
 #[tauri::command]
 fn halo_set(app: tauri::AppHandle, state: State<AppState>, on: bool) -> R<Settings> {
     if on {
-        halo::show_overlay(&app).map_err(|e| format!("{e:#}"))?;
+        halo::show_overlay(&app, state.settings.get().halo_camera).map_err(|e| format!("{e:#}"))?;
     } else {
         halo::hide_overlay(&app);
     }
@@ -311,7 +312,7 @@ pub fn run() {
             }
 
             if settings.get().halo {
-                if let Err(e) = halo::show_overlay(&handle) {
+                if let Err(e) = halo::show_overlay(&handle, settings.get().halo_camera) {
                     log::warn!("no se pudo reactivar H.A.L.O.: {e:#}");
                 }
             }

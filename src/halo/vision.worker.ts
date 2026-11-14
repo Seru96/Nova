@@ -2,7 +2,7 @@
 import { HandLandmarker } from "@mediapipe/tasks-vision";
 
 type In =
-  | { type: "init"; base: string }
+  | { type: "init"; base: string; gpu: boolean }
   | { type: "frame"; bitmap: ImageBitmap; ts: number };
 
 export type WorkerOut =
@@ -34,6 +34,7 @@ self.onmessage = async (e: MessageEvent<In>) => {
   const m = e.data;
   if (m.type === "init") {
     try {
+      if (!m.gpu) throw new Error("CPU");
       detector = await create(m.base, "GPU");
       post({ type: "ready", delegate: "GPU" });
     } catch {

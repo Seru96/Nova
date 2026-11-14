@@ -55,3 +55,23 @@ pub fn run_keyboard<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 's
         f()
     }
 }
+
+thread_local! {
+    /// Una sola conexión de enigo por hilo (en macOS, la del hilo principal).
+    static ENIGO: std::cell::RefCell<Option<Enigo>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Ejecuta `f` con una conexión de enigo reutilizable. En macOS va al hilo principal:
+/// enigo usa AppKit (NSEvent) también para el ratón, y AppKit fuera del hilo principal
+/// acaba cerrando la app.
+pub fn with_enigo<T: Send + 'static>(f: impl FnOnce(&mut Enigo) -> Result<T> + Send + 'static) -> Result<T> {
+    run_keyboard(move || {
+        ENIGO.with(|cell| {
+            let mut slot = cell.borrow_mut();
+            if slot.is_none() {
+                *slot = Some(enigo()?);
+            }
+            f(slot.as_mut().expect("enigo creado"))
+        })
+    })
+}
