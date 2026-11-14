@@ -16,7 +16,7 @@ export type Pose = "none" | "point" | "pinch" | "open" | "fist" | "other";
 export type HaloAction =
   | { kind: "pointer"; x: number; y: number }
   | { kind: "button"; action: "down" | "up" | "click" | "right_click" }
-  | { kind: "window"; action: "maximize" | "restore" | "minimize" | "snap_left" | "snap_right" }
+  | { kind: "window"; action: "maximize" | "restore" | "minimize" | "close" | "snap_left" | "snap_right" }
   | { kind: "desktop"; dir: "left" | "right" }
   | { kind: "stop" }
   | { kind: "resume" };
@@ -375,17 +375,17 @@ export class GestureEngine {
       this.holdStill(false, f.palm, t);
     }
 
-    // Puño mantenido: minimizar la ventana activa.
+    // Puño mantenido: cerrar la ventana activa.
     if (pose === "fist") {
       if (this.fistSince == null) this.fistSince = t;
       const p = (t - this.fistSince) / c.fistHoldMs;
       if (!this.fistLatch) {
         this.progress = clamp01(p);
-        this.label = "Minimizar…";
+        this.label = "Cerrar ventana…";
         if (p >= 1) {
-          out.push({ kind: "window", action: "minimize" });
+          out.push({ kind: "window", action: "close" });
           this.fistLatch = true;
-          this.label = "Minimizada";
+          this.label = "Ventana cerrada";
         }
       }
     } else {
@@ -460,6 +460,7 @@ const windowLabel: Record<Extract<HaloAction, { kind: "window" }>["action"], str
   maximize: "Maximizar",
   restore: "Restaurar",
   minimize: "Minimizar",
+  close: "Cerrar",
   snap_left: "Mitad izquierda",
   snap_right: "Mitad derecha",
 };

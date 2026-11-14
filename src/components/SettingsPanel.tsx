@@ -151,7 +151,7 @@ export function SettingsPanel({ settings, onClose, onSaved, onError }: Props) {
               <li><b>Pulgar + corazón</b>: clic derecho.</li>
               <li><b>Dos manos pellizcando</b>: sepáralas para maximizar, júntalas para restaurar, desplázalas a un lado para ocupar media pantalla.</li>
               <li><b>Palma abierta, deslizando rápido</b>: cambia de escritorio.</li>
-              <li><b>Puño 1 segundo</b>: minimiza la ventana activa.</li>
+              <li><b>Puño 1 segundo</b>: cierra la ventana activa (la de primer plano, no Nova).</li>
               <li><b>Palma quieta</b>: alto. Deja de escuchar y pausa los gestos (repite para seguir).</li>
             </ul>
             <p className="hint">Funciona en todo el ordenador, no solo en Nova. Se activa con el switch «Gestos» de la cabecera. La cámara se procesa en local y no se guarda nada.</p>

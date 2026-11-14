@@ -122,7 +122,7 @@ async fn type_text(app: &AppHandle, args: &Value) -> Result<String> {
     let submit = args["submit"].as_bool().unwrap_or(false);
     focus_target(app, args["app"].as_str()).await?;
     let n = text.chars().count();
-    tokio::task::spawn_blocking(move || -> Result<()> {
+    tokio::task::spawn_blocking(move || crate::access::run_keyboard(move || -> Result<()> {
         let mut e = enigo()?;
         e.text(&text).map_err(|e| anyhow!("{e}"))?;
         if submit {
@@ -130,7 +130,7 @@ async fn type_text(app: &AppHandle, args: &Value) -> Result<String> {
             e.key(Key::Return, Direction::Click).map_err(|e| anyhow!("{e}"))?;
         }
         Ok(())
-    })
+    }))
     .await??;
     Ok(format!("Escritos {n} caracteres{}", if submit { " y enviado" } else { "" }))
 }
@@ -139,7 +139,7 @@ async fn press_keys(app: &AppHandle, args: &Value) -> Result<String> {
     let combo = args["keys"].as_str().unwrap_or_default().to_string();
     let (mods, key) = parse_combo(&combo)?;
     focus_target(app, args["app"].as_str()).await?;
-    tokio::task::spawn_blocking(move || -> Result<()> {
+    tokio::task::spawn_blocking(move || crate::access::run_keyboard(move || -> Result<()> {
         let mut e = enigo()?;
         for m in &mods {
             e.key(*m, Direction::Press).map_err(|e| anyhow!("{e}"))?;
@@ -149,7 +149,7 @@ async fn press_keys(app: &AppHandle, args: &Value) -> Result<String> {
             let _ = e.key(*m, Direction::Release);
         }
         r.map_err(|e| anyhow!("{e}"))
-    })
+    }))
     .await??;
     Ok(format!("Pulsado {combo}"))
 }

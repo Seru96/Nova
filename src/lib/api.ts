@@ -63,7 +63,7 @@ export const api = {
   haloReady: (ready: boolean) => invoke<void>("halo_ready", { ready }),
   haloPointer: (x: number, y: number) => invoke<void>("halo_pointer", { x, y }),
   haloButton: (action: "down" | "up" | "click" | "right_click") => invoke<void>("halo_button", { action }),
-  haloWindow: (action: "maximize" | "restore" | "minimize" | "snap_left" | "snap_right") =>
+  haloWindow: (action: "maximize" | "restore" | "minimize" | "close" | "snap_left" | "snap_right") =>
     invoke<void>("halo_window", { action }),
   haloDesktop: (dir: "left" | "right") => invoke<void>("halo_desktop", { dir }),
   haloStopListening: () => invoke<void>("halo_stop_listening"),

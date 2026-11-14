@@ -247,6 +247,7 @@ pub fn run() {
         )
         .setup(|app| {
             let handle = app.handle().clone();
+            access::init(handle.clone());
             let config_dir = app.path().app_config_dir()?;
             let data_dir = app.path().app_data_dir()?;
 

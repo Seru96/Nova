@@ -28,3 +28,30 @@ pub fn enigo() -> Result<Enigo> {
         }
     })
 }
+
+static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+pub fn init(app: tauri::AppHandle) {
+    let _ = APP.set(app);
+}
+
+/// Ejecuta el teclado en el hilo principal en macOS: enigo consulta la distribución del
+/// teclado (Text Input Sources) y macOS cierra la app si eso pasa fuera del hilo principal.
+/// Hay que llamarlo desde un hilo secundario (p. ej. `spawn_blocking`).
+pub fn run_keyboard<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+    #[cfg(target_os = "macos")]
+    {
+        let app = APP.get().ok_or_else(|| anyhow!("la app aún no está lista"))?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(f());
+        })
+        .map_err(|e| anyhow!("{e}"))?;
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .map_err(|_| anyhow!("el teclado no respondió"))?
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        f()
+    }
+}

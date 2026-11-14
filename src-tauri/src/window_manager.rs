@@ -14,6 +14,8 @@ pub enum WindowAction {
     Maximize,
     Restore,
     Minimize,
+    /// Cerrar la ventana activa (no sale de la app).
+    Close,
     SnapLeft,
     SnapRight,
 }
@@ -55,7 +57,7 @@ pub fn target_rect(action: WindowAction, area: Rect) -> Option<Rect> {
                 h,
             })
         }
-        WindowAction::Minimize => None,
+        WindowAction::Minimize | WindowAction::Close => None,
     }
 }
 
@@ -69,6 +71,11 @@ fn enigo() -> Result<Enigo> {
 }
 
 fn chord(mods: &[Key], key: Key) -> Result<()> {
+    let mods = mods.to_vec();
+    crate::access::run_keyboard(move || chord_now(&mods, key))
+}
+
+fn chord_now(mods: &[Key], key: Key) -> Result<()> {
     let mut e = enigo()?;
     for m in mods {
         e.key(*m, Direction::Press).map_err(|e| anyhow!("{e}"))?;
@@ -136,9 +143,13 @@ mod platform {
 
     impl WindowManager for Native {
         fn apply(&self, action: WindowAction) -> Result<()> {
-            match target_rect(action, work_area()?) {
-                Some(r) => set_frontmost_frame(r),
-                None => chord(&[Key::Meta], Key::Unicode('m')),
+            match action {
+                WindowAction::Minimize => chord(&[Key::Meta], Key::Unicode('m')),
+                WindowAction::Close => chord(&[Key::Meta], Key::Unicode('w')),
+                _ => match target_rect(action, work_area()?) {
+                    Some(r) => set_frontmost_frame(r),
+                    None => Ok(()),
+                },
             }
         }
 
@@ -156,8 +167,10 @@ mod platform {
 mod platform {
     use super::*;
     use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOZORDER, SW_MINIMIZE, SW_RESTORE,
+        GetForegroundWindow, PostMessageW, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOZORDER, SW_MINIMIZE,
+        SW_RESTORE, WM_CLOSE,
     };
 
     pub struct Native;
@@ -171,6 +184,10 @@ mod platform {
                 }
                 if action == WindowAction::Minimize {
                     let _ = ShowWindow(hwnd, SW_MINIMIZE);
+                    return Ok(());
+                }
+                if action == WindowAction::Close {
+                    PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0))?;
                     return Ok(());
                 }
                 // Sacamos la ventana de maximizada para poder colocarla.
@@ -247,6 +264,7 @@ mod tests {
         assert_eq!(r.x, l.w);
         assert_eq!(l.y, 25.0);
         assert!(target_rect(WindowAction::Minimize, area).is_none());
+        assert!(target_rect(WindowAction::Close, area).is_none());
         let c = target_rect(WindowAction::Restore, area).unwrap();
         assert!(c.x > 0.0 && c.x + c.w < area.w);
     }

@@ -108,11 +108,11 @@ describe("H.A.L.O. gestos", () => {
     ]);
   });
 
-  it("puño mantenido un segundo minimiza una sola vez", () => {
+  it("puño mantenido un segundo cierra la ventana una sola vez", () => {
     const e = eng();
     const frames: [number, Hand[]][] = [];
     for (let t = 0; t <= 2000; t += 50) frames.push([t, [fist(0.5, 0.5)]]);
-    expect(kinds(run(e, frames))).toEqual([{ kind: "window", action: "minimize" }]);
+    expect(kinds(run(e, frames))).toEqual([{ kind: "window", action: "close" }]);
   });
 
   it("deslizar la palma a la izquierda va al escritorio de la derecha", () => {
