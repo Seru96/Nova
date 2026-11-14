@@ -46,12 +46,14 @@ export function Overlay() {
   const [hud, setHud] = useState<HudState | null>(null);
   const [status, setStatus] = useState<Status>({ phase: "starting" });
   const [preview, setPreview] = useState(true);
+  const [noAccess, setNoAccess] = useState(false);
   const handsRef = useRef<Hand[]>([]);
 
   useEffect(() => {
     document.documentElement.classList.add("halo-overlay");
     api.getSettings().then((s) => setPreview(s.halo_preview)).catch(() => {});
     const unsub = on("settings://changed", (s) => setPreview(s.halo_preview));
+    const unsubAccess = on("halo://access", (a) => setNoAccess(!a.ok));
 
     let alive = true;
     let stream: MediaStream | null = null;
@@ -123,6 +125,7 @@ export function Overlay() {
       worker.terminate();
       stream?.getTracks().forEach((t) => t.stop());
       void unsub.then((f) => f());
+      void unsubAccess.then((f) => f());
     };
   }, []);
 
@@ -168,7 +171,11 @@ export function Overlay() {
   }, [preview]);
 
   const cursor = hud?.cursor;
-  const label = hud?.paused ? "H.A.L.O. en pausa · palma quieta para seguir" : hud?.label;
+  const label = noAccess
+    ? "Falta el permiso de Accesibilidad: actívalo para Nova en Ajustes del Sistema y reinicia Nova"
+    : hud?.paused
+      ? "H.A.L.O. en pausa · palma quieta para seguir"
+      : hud?.label;
 
   return (
     <div className="halo">
@@ -196,7 +203,7 @@ export function Overlay() {
               <canvas ref={canvasRef} width={192} height={144} />
             </div>
           )}
-          <div className={`halo-pill ${label ? "show" : ""} ${hud?.paused ? "paused" : ""}`}>
+          <div className={`halo-pill ${label ? "show" : ""} ${hud?.paused || noAccess ? "paused" : ""}`}>
             <span className={`halo-dot ${status.phase === "running" && (hud?.hands ?? 0) > 0 ? "live" : ""}`} />
             <span>{status.phase === "starting" ? "Encendiendo la cámara…" : label || "H.A.L.O."}</span>
             {(hud?.progress ?? 0) > 0 && (

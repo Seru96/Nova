@@ -1,5 +1,6 @@
 //! Nova: asistente de escritorio local-first.
 
+mod access;
 mod control;
 mod download;
 mod halo;
@@ -283,7 +284,7 @@ pub fn run() {
                 engine,
                 router,
                 voice,
-                pointer: halo::Pointer::new(),
+                pointer: halo::Pointer::new(handle.clone()),
             });
             Ok(())
         })

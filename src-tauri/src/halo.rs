@@ -8,8 +8,8 @@
 use std::sync::mpsc::{channel, Sender};
 
 use anyhow::{anyhow, Result};
-use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings as EnigoSettings};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use enigo::{Button, Coordinate, Direction, Enigo, Mouse};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::window_manager::{self, DesktopDir, WindowAction, WindowManager};
 
@@ -22,6 +22,12 @@ pub enum ButtonAction {
     Up,
     Click,
     RightClick,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct AccessState {
+    ok: bool,
+    error: Option<String>,
 }
 
 enum Cmd {
@@ -37,13 +43,16 @@ pub struct Pointer {
 }
 
 impl Pointer {
-    pub fn new() -> Self {
+    pub fn new(app: AppHandle) -> Self {
         let (tx, rx) = channel::<Cmd>();
         std::thread::Builder::new()
             .name("halo-pointer".into())
             .spawn(move || {
                 let mut enigo: Option<Enigo> = None;
                 let mut screen = (0i32, 0i32);
+                // Sin permiso, reintentamos como mucho cada 2 s (y sin repetir el aviso).
+                let mut retry_at = std::time::Instant::now();
+                let mut reported: Option<bool> = None;
                 while let Ok(mut cmd) = rx.recv() {
                     // Si se acumulan movimientos, solo cuenta el último.
                     if matches!(cmd, Cmd::Move(..)) {
@@ -56,13 +65,25 @@ impl Pointer {
                         }
                     }
                     if enigo.is_none() {
-                        match Enigo::new(&EnigoSettings::default()) {
+                        if std::time::Instant::now() < retry_at {
+                            continue;
+                        }
+                        match crate::access::enigo() {
                             Ok(e) => {
                                 screen = e.main_display().unwrap_or((1440, 900));
                                 enigo = Some(e);
+                                if reported != Some(true) {
+                                    let _ = app.emit("halo://access", AccessState { ok: true, error: None });
+                                    reported = Some(true);
+                                }
                             }
                             Err(e) => {
-                                log::warn!("H.A.L.O. sin control del ratón: {e}");
+                                retry_at = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                                if reported != Some(false) {
+                                    log::warn!("H.A.L.O. sin control del ratón: {e:#}");
+                                    let _ = app.emit("halo://access", AccessState { ok: false, error: Some(format!("{e:#}")) });
+                                    reported = Some(false);
+                                }
                                 continue;
                             }
                         }

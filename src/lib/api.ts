@@ -80,6 +80,7 @@ export interface Events {
   "voice://transcript": string;
   "voice://command": string;
   "voice://wake": null;
+  "halo://access": { ok: boolean; error: string | null };
 }
 
 export function on<K extends keyof Events>(event: K, cb: (payload: Events[K]) => void): Promise<UnlistenFn> {

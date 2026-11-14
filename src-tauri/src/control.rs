@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Result};
-use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+use enigo::{Direction, Enigo, Key, Keyboard};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 #[cfg(not(target_os = "macos"))]
@@ -155,9 +155,7 @@ async fn press_keys(app: &AppHandle, args: &Value) -> Result<String> {
 }
 
 fn enigo() -> Result<Enigo> {
-    Enigo::new(&Settings::default()).map_err(|e| {
-        anyhow!("no puedo controlar el teclado ({e}). En macOS, activa Nova en Ajustes del Sistema → Privacidad y seguridad → Accesibilidad")
-    })
+    crate::access::enigo()
 }
 
 /// Convierte "cmd+shift+t" en modificadores + tecla.
