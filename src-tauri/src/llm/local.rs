@@ -30,7 +30,10 @@ pub const STT_FILE: &str = "ggml-small-q5_1.bin";
 pub const STT_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin";
 
-const LLAMA_RELEASES: &str = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
+/// Las builds de llama.cpp (bNNNN) se publican como *prerelease*, así que
+/// `/releases/latest` no las devuelve: listamos las recientes y elegimos la primera
+/// que tenga paquete para esta plataforma.
+const LLAMA_RELEASES: &str = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=15";
 const CONTEXT_TOKENS: u32 = 8192;
 
 #[cfg(windows)]
@@ -177,7 +180,7 @@ impl LocalEngine {
         }
 
         self.set_status(Phase::Downloading, "Buscando el motor llama.cpp", None);
-        let release: Value = http_client()
+        let releases: Value = http_client()
             .get(LLAMA_RELEASES)
             .header("Accept", "application/vnd.github+json")
             .send()
@@ -185,18 +188,10 @@ impl LocalEngine {
             .error_for_status()?
             .json()
             .await?;
-        let assets = release["assets"]
-            .as_array()
-            .ok_or_else(|| anyhow!("respuesta de GitHub sin assets"))?;
-        let names: Vec<(&str, &str)> = assets
-            .iter()
-            .filter_map(|a| Some((a["name"].as_str()?, a["browser_download_url"].as_str()?)))
-            .collect();
-
-        let (name, url) = pick_runtime_asset(&names)
+        let (name, url) = pick_from_releases(&releases)
             .ok_or_else(|| anyhow!("no hay build de llama.cpp para esta plataforma"))?;
-        let archive = self.dir.join("downloads").join(name);
-        self.download_with_status(url, &archive, "Descargando el motor llama.cpp")
+        let archive = self.dir.join("downloads").join(&name);
+        self.download_with_status(&url, &archive, "Descargando el motor llama.cpp")
             .await?;
 
         self.set_status(Phase::Starting, "Instalando el motor", None);
@@ -391,6 +386,19 @@ fn escalate_tool() -> Value {
     })
 }
 
+/// Recorre las releases (de más nueva a más antigua) y devuelve (nombre, url)
+/// del primer paquete compatible con esta plataforma.
+fn pick_from_releases(releases: &Value) -> Option<(String, String)> {
+    releases.as_array()?.iter().find_map(|r| {
+        let assets: Vec<(&str, &str)> = r["assets"]
+            .as_array()?
+            .iter()
+            .filter_map(|a| Some((a["name"].as_str()?, a["browser_download_url"].as_str()?)))
+            .collect();
+        pick_runtime_asset(&assets).map(|(n, u)| (n.to_string(), u.to_string()))
+    })
+}
+
 /// Elige el paquete de llama.cpp para esta plataforma entre los assets de la release.
 fn pick_runtime_asset<'a>(assets: &[(&'a str, &'a str)]) -> Option<(&'a str, &'a str)> {
     let prefs: &[&str] = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
@@ -433,6 +441,20 @@ fn free_port() -> Result<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skips_releases_without_binaries() {
+        let releases = json!([
+            {"tag_name": "v0.7.0", "assets": [{"name": "nightly-tag.txt", "browser_download_url": "x"}]},
+            {"tag_name": "b11785", "assets": [
+                {"name": "llama-b11785-bin-macos-arm64.tar.gz", "browser_download_url": "mac"},
+                {"name": "llama-b11785-bin-win-vulkan-x64.zip", "browser_download_url": "win"},
+                {"name": "llama-b11785-bin-ubuntu-x64.tar.gz", "browser_download_url": "linux"}
+            ]}
+        ]);
+        let (name, _) = pick_from_releases(&releases).unwrap();
+        assert!(name.starts_with("llama-b11785-bin-"));
+    }
 
     #[test]
     fn picks_platform_asset() {
