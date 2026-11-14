@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f7f8fb;
+  --panel: #ffffff;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --line: rgba(15, 23, 42, 0.1);
+  color-scheme: light dark;
+  font-family: ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0e1a;
+    --panel: #111827;
+    --fg: #e2e8f0;
+    --muted: #8b98ad;
+    --line: rgba(148, 163, 184, 0.15);
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+}
+
+@layer components {
+  .btn {
+    @apply rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm transition hover:bg-zinc-500/10 disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply border-sky-500 bg-sky-500 text-white hover:bg-sky-600;
+  }
+  .icon-btn {
+    @apply flex h-8 w-8 items-center justify-center rounded-lg text-base text-[var(--muted)] transition hover:bg-zinc-500/10;
+  }
+  .bubble {
+    @apply flex max-w-[85%] flex-col gap-1 rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed;
+  }
+  .bubble-user {
+    @apply bg-sky-500 text-white;
+  }
+  .bubble-nova {
+    @apply border border-[var(--line)] bg-[var(--panel)];
+  }
+  .field {
+    @apply mb-5 flex flex-col gap-2;
+  }
+  .field > label {
+    @apply text-xs font-medium uppercase tracking-wider text-[var(--muted)];
+  }
+  .field input,
+  .field textarea,
+  .field select {
+    @apply w-full rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:border-sky-500;
+  }
+}
